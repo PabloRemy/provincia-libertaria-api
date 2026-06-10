@@ -215,3 +215,23 @@ def crear_incidente_con_foto(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+from fastapi import Request
+
+@app.post("/debug")
+async def debug_request(request: Request):
+    content_type = request.headers.get("content-type", "")
+
+    if "application/json" in content_type:
+        data = await request.json()
+        return {
+            "content_type": content_type,
+            "data": data
+        }
+
+    form = await request.form()
+    return {
+        "content_type": content_type,
+        "form_keys": list(form.keys()),
+        "form_data": {key: str(value)[:300] for key, value in form.items()}
+    }
