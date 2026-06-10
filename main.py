@@ -1,11 +1,14 @@
 import os
 import uuid
+import base64
+from io import BytesIO
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request
 from pydantic import BaseModel
 from PIL import Image
 import psycopg2
+import json
 
 app = FastAPI()
 
@@ -30,6 +33,24 @@ class Incidente(BaseModel):
     categoria: str
     descripcion: str
     foto_url: Optional[str] = None
+    estado: Optional[str] = "nuevo"
+    origen: Optional[str] = "vecino"
+    fuente: Optional[str] = "formulario"
+    latitud: Optional[float] = None
+    longitud: Optional[float] = None
+
+
+class FotoBase64(BaseModel):
+    filename: Optional[str] = None
+    content: str
+
+
+class IncidenteFotoJSON(BaseModel):
+    ciudad: str
+    barrio: str
+    categoria: str
+    descripcion: str
+    foto: Optional[FotoBase64] = None
     estado: Optional[str] = "nuevo"
     origen: Optional[str] = "vecino"
     fuente: Optional[str] = "formulario"
@@ -86,19 +107,13 @@ def insertar_incidente(
     return nuevo_id
 
 
-def procesar_foto(foto: UploadFile) -> Optional[str]:
+def procesar_foto_upload(foto: UploadFile) -> Optional[str]:
     if not foto or not foto.filename:
         return None
 
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-    extension_permitida = foto.content_type in [
-        "image/jpeg",
-        "image/png",
-        "image/webp"
-    ]
-
-    if not extension_permitida:
+    if foto.content_type not in ["image/jpeg", "image/png", "image/webp"]:
         raise HTTPException(status_code=400, detail="Formato de imagen no permitido")
 
     filename = f"{uuid.uuid4().hex}.webp"
@@ -107,21 +122,35 @@ def procesar_foto(foto: UploadFile) -> Optional[str]:
     try:
         image = Image.open(foto.file)
         image = image.convert("RGB")
-
         image.thumbnail((800, 800))
-
-        image.save(
-            file_path,
-            "WEBP",
-            quality=55,
-            method=6,
-            optimize=True
-        )
+        image.save(file_path, "WEBP", quality=55, method=6, optimize=True)
 
         return f"{PUBLIC_UPLOAD_BASE}/{filename}"
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"No se pudo procesar la imagen: {str(e)}")
+
+
+def procesar_foto_base64(foto: FotoBase64) -> Optional[str]:
+    if not foto or not foto.content:
+        return None
+
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+    filename = f"{uuid.uuid4().hex}.webp"
+    file_path = os.path.join(UPLOAD_DIR, filename)
+
+    try:
+        image_bytes = base64.b64decode(foto.content)
+        image = Image.open(BytesIO(image_bytes))
+        image = image.convert("RGB")
+        image.thumbnail((800, 800))
+        image.save(file_path, "WEBP", quality=55, method=6, optimize=True)
+
+        return f"{PUBLIC_UPLOAD_BASE}/{filename}"
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"No se pudo procesar la imagen base64: {str(e)}")
 
 
 @app.post("/registro")
@@ -192,7 +221,7 @@ def crear_incidente_con_foto(
     foto: Optional[UploadFile] = File(None),
 ):
     try:
-        foto_url = procesar_foto(foto) if foto else None
+        foto_url = procesar_foto_upload(foto) if foto else None
 
         nuevo_id = insertar_incidente(
             ciudad=ciudad,
@@ -204,11 +233,7 @@ def crear_incidente_con_foto(
             fuente=fuente,
         )
 
-        return {
-            "ok": True,
-            "id": nuevo_id,
-            "foto_url": foto_url
-        }
+        return {"ok": True, "id": nuevo_id, "foto_url": foto_url}
 
     except HTTPException:
         raise
@@ -216,8 +241,33 @@ def crear_incidente_con_foto(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-from fastapi import Request
-import json
+
+@app.post("/incidente-foto-json")
+def crear_incidente_con_foto_json(incidente: IncidenteFotoJSON):
+    try:
+        foto_url = procesar_foto_base64(incidente.foto) if incidente.foto else None
+
+        nuevo_id = insertar_incidente(
+            ciudad=incidente.ciudad,
+            barrio=incidente.barrio,
+            categoria=incidente.categoria,
+            descripcion=incidente.descripcion,
+            foto_url=foto_url,
+            estado=incidente.estado,
+            origen=incidente.origen,
+            fuente=incidente.fuente,
+            latitud=incidente.latitud,
+            longitud=incidente.longitud,
+        )
+
+        return {"ok": True, "id": nuevo_id, "foto_url": foto_url}
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/debug")
 async def debug_request(request: Request):
