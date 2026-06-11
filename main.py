@@ -13,6 +13,12 @@ import json
 
 app = FastAPI()
 
+app.mount(
+    "/uploads",
+    StaticFiles(directory="/data/uploads"),
+    name="uploads"
+)
+
 DATABASE_URL = os.getenv("DATABASE_URL")
 UPLOAD_DIR = "/data/uploads/incidentes"
 PUBLIC_UPLOAD_BASE = "/uploads/incidentes"
