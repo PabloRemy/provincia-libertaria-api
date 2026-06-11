@@ -5,6 +5,7 @@ from io import BytesIO
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from PIL import Image
 import psycopg2
