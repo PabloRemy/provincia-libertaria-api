@@ -1,15 +1,17 @@
 import os
 import uuid
 import base64
+import json
+import html
 from io import BytesIO
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from PIL import Image
 import psycopg2
-import json
 
 app = FastAPI()
 
@@ -70,6 +72,12 @@ def home():
     return {"status": "ok", "app": "Provincia Libertaria API"}
 
 
+def db_conn():
+    if not DATABASE_URL:
+        raise HTTPException(status_code=500, detail="DATABASE_URL no configurada")
+    return psycopg2.connect(DATABASE_URL)
+
+
 def insertar_incidente(
     ciudad,
     barrio,
@@ -82,10 +90,7 @@ def insertar_incidente(
     latitud=None,
     longitud=None,
 ):
-    if not DATABASE_URL:
-        raise HTTPException(status_code=500, detail="DATABASE_URL no configurada")
-
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = db_conn()
     cur = conn.cursor()
 
     cur.execute("""
@@ -160,13 +165,23 @@ def procesar_foto_base64(foto: FotoBase64) -> Optional[str]:
         raise HTTPException(status_code=400, detail=f"No se pudo procesar la imagen base64: {str(e)}")
 
 
+@app.get("/foto/{nombre}")
+def ver_foto(nombre: str):
+    if "/" in nombre or ".." in nombre:
+        raise HTTPException(status_code=400, detail="Nombre de archivo inválido")
+
+    file_path = os.path.join(UPLOAD_DIR, nombre)
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Foto no encontrada")
+
+    return FileResponse(file_path, media_type="image/webp")
+
+
 @app.post("/registro")
 def crear_registro(registro: Registro):
-    if not DATABASE_URL:
-        raise HTTPException(status_code=500, detail="DATABASE_URL no configurada")
-
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = db_conn()
         cur = conn.cursor()
 
         cur.execute("""
@@ -274,6 +289,346 @@ def crear_incidente_con_foto_json(incidente: IncidenteFotoJSON):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/panel/berisso", response_class=HTMLResponse)
+def panel_berisso():
+    ciudad = "Berisso"
+
+    conn = db_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT COUNT(*)
+        FROM reclutamiento_registros
+        WHERE LOWER(ciudad) = LOWER(%s);
+    """, (ciudad,))
+    adhesiones = cur.fetchone()[0]
+
+    cur.execute("""
+        SELECT COUNT(*)
+        FROM incidentes
+        WHERE LOWER(ciudad) = LOWER(%s);
+    """, (ciudad,))
+    incidentes_total = cur.fetchone()[0]
+
+    cur.execute("""
+        SELECT COUNT(DISTINCT barrio)
+        FROM incidentes
+        WHERE LOWER(ciudad) = LOWER(%s);
+    """, (ciudad,))
+    barrios_activos = cur.fetchone()[0]
+
+    cur.execute("""
+        SELECT categoria, COUNT(*) AS total
+        FROM incidentes
+        WHERE LOWER(ciudad) = LOWER(%s)
+        GROUP BY categoria
+        ORDER BY total DESC
+        LIMIT 1;
+    """, (ciudad,))
+    categoria_principal_row = cur.fetchone()
+    categoria_principal = categoria_principal_row[0] if categoria_principal_row else "Sin datos"
+
+    cur.execute("""
+        SELECT id, barrio, categoria, descripcion, foto_url, fecha_reporte
+        FROM incidentes
+        WHERE LOWER(ciudad) = LOWER(%s)
+        ORDER BY fecha_reporte DESC
+        LIMIT 12;
+    """, (ciudad,))
+    incidentes = cur.fetchall()
+
+    cur.execute("""
+        SELECT categoria, COUNT(*) AS total
+        FROM incidentes
+        WHERE LOWER(ciudad) = LOWER(%s)
+        GROUP BY categoria
+        ORDER BY total DESC;
+    """, (ciudad,))
+    categorias = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    cards_html = ""
+
+    for item in incidentes:
+        id_incidente, barrio, categoria, descripcion, foto_url, fecha = item
+
+        barrio = html.escape(barrio or "")
+        categoria = html.escape(categoria or "")
+        descripcion = html.escape(descripcion or "")
+
+        if foto_url:
+            nombre_foto = foto_url.split("/")[-1]
+            imagen_html = f'<img src="/foto/{html.escape(nombre_foto)}" alt="Foto del reporte">'
+        else:
+            imagen_html = '<div class="sin-foto">Sin foto</div>'
+
+        cards_html += f"""
+        <article class="card">
+            <div class="thumb">{imagen_html}</div>
+            <div class="contenido">
+                <div class="meta">#{id_incidente} · {fecha.strftime('%d/%m/%Y %H:%M')}</div>
+                <h3>{categoria}</h3>
+                <p class="barrio">{barrio}</p>
+                <p>{descripcion}</p>
+            </div>
+        </article>
+        """
+
+    categorias_html = ""
+
+    for categoria, total in categorias:
+        categorias_html += f"""
+        <li>
+            <span>{html.escape(categoria)}</span>
+            <strong>{total}</strong>
+        </li>
+        """
+
+    if not cards_html:
+        cards_html = '<p class="vacio">Todavía no hay reportes para Berisso.</p>'
+
+    if not categorias_html:
+        categorias_html = '<li><span>Sin datos</span><strong>0</strong></li>'
+
+    html_response = f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Panel Berisso - Provincia Libertaria</title>
+        <style>
+            body {{
+                margin: 0;
+                font-family: Arial, sans-serif;
+                background: #48020c;
+                color: #ffffff;
+            }}
+
+            .wrap {{
+                max-width: 1180px;
+                margin: 0 auto;
+                padding: 32px 18px;
+            }}
+
+            .top {{
+                margin-bottom: 28px;
+            }}
+
+            .eyebrow {{
+                color: #f1d571;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: .08em;
+                font-size: 13px;
+            }}
+
+            h1 {{
+                margin: 8px 0 6px;
+                font-size: 38px;
+                color: #f1d571;
+            }}
+
+            .sub {{
+                margin: 0;
+                color: #f7e7b0;
+            }}
+
+            .stats {{
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 14px;
+                margin: 28px 0;
+            }}
+
+            .stat {{
+                background: #650713;
+                border: 1px solid #b98b31;
+                border-radius: 12px;
+                padding: 18px;
+            }}
+
+            .stat span {{
+                display: block;
+                font-size: 13px;
+                color: #f1d571;
+                margin-bottom: 8px;
+            }}
+
+            .stat strong {{
+                font-size: 28px;
+            }}
+
+            .grid {{
+                display: grid;
+                grid-template-columns: 1fr 320px;
+                gap: 20px;
+                align-items: start;
+            }}
+
+            .cards {{
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 16px;
+            }}
+
+            .card {{
+                background: #ffffff;
+                color: #121212;
+                border-radius: 14px;
+                overflow: hidden;
+                border: 1px solid #b98b31;
+            }}
+
+            .thumb {{
+                width: 100%;
+                height: 180px;
+                background: #240106;
+            }}
+
+            .thumb img {{
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                display: block;
+            }}
+
+            .sin-foto {{
+                height: 100%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: #f1d571;
+                font-weight: 700;
+            }}
+
+            .contenido {{
+                padding: 16px;
+            }}
+
+            .meta {{
+                color: #777;
+                font-size: 12px;
+                margin-bottom: 8px;
+            }}
+
+            .card h3 {{
+                margin: 0 0 6px;
+                color: #9d1018;
+                font-size: 20px;
+            }}
+
+            .barrio {{
+                margin: 0 0 10px;
+                font-weight: 700;
+            }}
+
+            .side {{
+                background: #650713;
+                border: 1px solid #b98b31;
+                border-radius: 14px;
+                padding: 18px;
+            }}
+
+            .side h2 {{
+                margin-top: 0;
+                color: #f1d571;
+                font-size: 22px;
+            }}
+
+            .side ul {{
+                list-style: none;
+                padding: 0;
+                margin: 0;
+            }}
+
+            .side li {{
+                display: flex;
+                justify-content: space-between;
+                padding: 10px 0;
+                border-bottom: 1px solid rgba(241,213,113,.25);
+            }}
+
+            .side li:last-child {{
+                border-bottom: 0;
+            }}
+
+            .vacio {{
+                color: #f1d571;
+                font-weight: 700;
+            }}
+
+            @media (max-width: 850px) {{
+                .stats {{
+                    grid-template-columns: repeat(2, 1fr);
+                }}
+
+                .grid {{
+                    grid-template-columns: 1fr;
+                }}
+
+                .cards {{
+                    grid-template-columns: 1fr;
+                }}
+
+                h1 {{
+                    font-size: 32px;
+                }}
+            }}
+        </style>
+    </head>
+    <body>
+        <main class="wrap">
+            <section class="top">
+                <div class="eyebrow">Panel distrital</div>
+                <h1>Berisso</h1>
+                <p class="sub">Vista territorial de adhesiones e incidentes reportados.</p>
+            </section>
+
+            <section class="stats">
+                <div class="stat">
+                    <span>Adhesiones</span>
+                    <strong>{adhesiones}</strong>
+                </div>
+                <div class="stat">
+                    <span>Incidentes</span>
+                    <strong>{incidentes_total}</strong>
+                </div>
+                <div class="stat">
+                    <span>Barrios activos</span>
+                    <strong>{barrios_activos}</strong>
+                </div>
+                <div class="stat">
+                    <span>Categoría principal</span>
+                    <strong style="font-size:20px">{html.escape(categoria_principal)}</strong>
+                </div>
+            </section>
+
+            <section class="grid">
+                <div>
+                    <h2>Últimos reportes</h2>
+                    <div class="cards">
+                        {cards_html}
+                    </div>
+                </div>
+
+                <aside class="side">
+                    <h2>Categorías</h2>
+                    <ul>
+                        {categorias_html}
+                    </ul>
+                </aside>
+            </section>
+        </main>
+    </body>
+    </html>
+    """
+
+    return HTMLResponse(content=html_response)
 
 
 @app.post("/debug")
