@@ -80,6 +80,31 @@ def db_conn():
     return psycopg2.connect(DATABASE_URL)
 
 
+def ciudad_desde_slug(slug: str) -> str:
+    mapa = {
+        "berisso": "Berisso",
+        "ensenada": "Ensenada",
+        "la-plata": "La Plata",
+        "punta-indio": "Punta Indio",
+        "magdalena": "Magdalena",
+        "quilmes": "Quilmes",
+        "avellaneda": "Avellaneda",
+        "lanus": "Lanús",
+        "lomas-de-zamora": "Lomas de Zamora",
+        "almirante-brown": "Almirante Brown",
+        "florencio-varela": "Florencio Varela",
+        "berazategui": "Berazategui",
+        "esteban-echeverria": "Esteban Echeverría",
+        "ezeiza": "Ezeiza",
+        "canuelas": "Cañuelas",
+        "san-vicente": "San Vicente",
+        "presidente-peron": "Presidente Perón",
+        "la-matanza": "La Matanza"
+    }
+
+    return mapa.get(slug.lower(), slug.replace("-", " ").title())
+
+
 def insertar_incidente(
     ciudad,
     barrio,
@@ -144,6 +169,30 @@ def actualizar_estado_incidentes(ids: List[int], estado: str):
     conn.close()
 
     return afectados
+
+
+def procesar_foto_upload(foto: UploadFile) -> Optional[str]:
+    if not foto or not foto.filename:
+        return None
+
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+    if foto.content_type not in ["image/jpeg", "image/png", "image/webp"]:
+        raise HTTPException(status_code=400, detail="Formato de imagen no permitido")
+
+    filename = f"{uuid.uuid4().hex}.webp"
+    file_path = os.path.join(UPLOAD_DIR, filename)
+
+    try:
+        image = Image.open(foto.file)
+        image = image.convert("RGB")
+        image.thumbnail((800, 800))
+        image.save(file_path, "WEBP", quality=55, method=6, optimize=True)
+
+        return f"{PUBLIC_UPLOAD_BASE}/{filename}"
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"No se pudo procesar la imagen: {str(e)}")
 
 
 def procesar_foto_base64(foto: FotoBase64) -> Optional[str]:
@@ -235,6 +284,38 @@ def crear_incidente(incidente: Incidente):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/incidente-foto")
+def crear_incidente_con_foto(
+    ciudad: str = Form(...),
+    barrio: str = Form(...),
+    categoria: str = Form(...),
+    descripcion: str = Form(...),
+    origen: str = Form("vecino"),
+    fuente: str = Form("formulario"),
+    foto: Optional[UploadFile] = File(None),
+):
+    try:
+        foto_url = procesar_foto_upload(foto) if foto else None
+
+        nuevo_id = insertar_incidente(
+            ciudad=ciudad,
+            barrio=barrio,
+            categoria=categoria,
+            descripcion=descripcion,
+            foto_url=foto_url,
+            origen=origen,
+            fuente=fuente,
+        )
+
+        return {"ok": True, "id": nuevo_id, "foto_url": foto_url}
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/incidente-foto-json")
 def crear_incidente_con_foto_json(incidente: IncidenteFotoJSON):
     try:
@@ -266,15 +347,20 @@ def crear_incidente_con_foto_json(incidente: IncidenteFotoJSON):
 def cambiar_estado_lote(
     ids: List[int] = Form(default=[]),
     estado: str = Form(...),
-    volver: str = Form("/panel/berisso")
+    volver: str = Form("/territorio/berisso")
 ):
     actualizar_estado_incidentes(ids, estado)
     return RedirectResponse(url=volver, status_code=303)
 
 
-@app.get("/panel/berisso", response_class=HTMLResponse)
-def panel_berisso(estado: str = "pendiente"):
-    ciudad = "Berisso"
+@app.get("/panel/berisso")
+def redirigir_panel_berisso():
+    return RedirectResponse(url="/territorio/berisso", status_code=301)
+
+
+@app.get("/territorio/{distrito_slug}", response_class=HTMLResponse)
+def panel_distrito(distrito_slug: str, estado: str = "pendiente"):
+    ciudad = ciudad_desde_slug(distrito_slug)
 
     if estado not in ESTADOS_VALIDOS and estado != "todos":
         estado = "pendiente"
@@ -303,11 +389,15 @@ def panel_berisso(estado: str = "pendiente"):
     ocultos = estados_data.get("oculto", 0)
 
     cur.execute("""
-        SELECT COUNT(DISTINCT barrio)
+        SELECT barrio, COUNT(*) AS total
         FROM incidentes
-        WHERE LOWER(ciudad) = LOWER(%s);
+        WHERE LOWER(ciudad) = LOWER(%s)
+        GROUP BY barrio
+        ORDER BY total DESC;
     """, (ciudad,))
-    barrios_activos = cur.fetchone()[0]
+    barrios = cur.fetchall()
+
+    barrios_activos = len(barrios)
 
     if estado == "todos":
         cur.execute("""
@@ -397,11 +487,24 @@ def panel_berisso(estado: str = "pendiente"):
         </li>
         """
 
+    barrios_html = ""
+
+    for barrio, total in barrios:
+        barrios_html += f"""
+        <li>
+            <span>{html.escape(barrio or "Sin barrio")}</span>
+            <strong>{total}</strong>
+        </li>
+        """
+
     if not cards_html:
         cards_html = '<p class="vacio">No hay reportes en esta vista.</p>'
 
     if not categorias_html:
         categorias_html = '<li><span>Sin datos</span><strong>0</strong></li>'
+
+    if not barrios_html:
+        barrios_html = '<li><span>Sin barrios activos</span><strong>0</strong></li>'
 
     def active(e):
         return "active" if estado == e else ""
@@ -412,7 +515,7 @@ def panel_berisso(estado: str = "pendiente"):
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Panel Berisso - Provincia Libertaria</title>
+        <title>Territorio {html.escape(ciudad)} - Provincia Libertaria</title>
         <style>
             body {{
                 margin: 0;
@@ -444,6 +547,17 @@ def panel_berisso(estado: str = "pendiente"):
             .sub {{
                 margin: 0;
                 color: #f7e7b0;
+            }}
+
+            .public-link {{
+                display: inline-block;
+                margin-top: 14px;
+                color: #f1d571;
+                border: 1px solid #b98b31;
+                padding: 8px 12px;
+                border-radius: 999px;
+                text-decoration: none;
+                font-weight: 700;
             }}
 
             .stats {{
@@ -518,8 +632,8 @@ def panel_berisso(estado: str = "pendiente"):
             }}
 
             .btn-resuelto {{
-                background: #ffffff;
-                color: #121212;
+                background: #24a148;
+                color: #ffffff;
             }}
 
             .btn-oculto {{
@@ -635,32 +749,37 @@ def panel_berisso(estado: str = "pendiente"):
             }}
 
             .side {{
+                display: grid;
+                gap: 16px;
+            }}
+
+            .box {{
                 background: #650713;
                 border: 1px solid #b98b31;
                 border-radius: 14px;
                 padding: 18px;
             }}
 
-            .side h2 {{
+            .box h2 {{
                 margin-top: 0;
                 color: #f1d571;
                 font-size: 22px;
             }}
 
-            .side ul {{
+            .box ul {{
                 list-style: none;
                 padding: 0;
                 margin: 0;
             }}
 
-            .side li {{
+            .box li {{
                 display: flex;
                 justify-content: space-between;
                 padding: 10px 0;
                 border-bottom: 1px solid rgba(241,213,113,.25);
             }}
 
-            .side li:last-child {{
+            .box li:last-child {{
                 border-bottom: 0;
             }}
 
@@ -691,9 +810,10 @@ def panel_berisso(estado: str = "pendiente"):
     <body>
         <main class="wrap">
             <section>
-                <div class="eyebrow">Panel distrital</div>
-                <h1>Berisso</h1>
-                <p class="sub">Vista territorial de adhesiones e incidentes reportados.</p>
+                <div class="eyebrow">Panel territorial</div>
+                <h1>Distrito {html.escape(ciudad)}</h1>
+                <p class="sub">Adhesiones, reportes y moderación territorial.</p>
+                <a class="public-link" href="/reportes/{html.escape(distrito_slug)}">Ver página pública</a>
             </section>
 
             <section class="stats">
@@ -716,15 +836,15 @@ def panel_berisso(estado: str = "pendiente"):
             </section>
 
             <nav class="tabs">
-                <a class="{active('pendiente')}" href="/panel/berisso?estado=pendiente">Pendientes ({pendientes})</a>
-                <a class="{active('publicado')}" href="/panel/berisso?estado=publicado">Publicados ({publicados})</a>
-                <a class="{active('resuelto')}" href="/panel/berisso?estado=resuelto">Resueltos ({resueltos})</a>
-                <a class="{active('oculto')}" href="/panel/berisso?estado=oculto">Ocultos ({ocultos})</a>
-                <a class="{active('todos')}" href="/panel/berisso?estado=todos">Todos</a>
+                <a class="{active('pendiente')}" href="/territorio/{html.escape(distrito_slug)}?estado=pendiente">Pendientes ({pendientes})</a>
+                <a class="{active('publicado')}" href="/territorio/{html.escape(distrito_slug)}?estado=publicado">Publicados ({publicados})</a>
+                <a class="{active('resuelto')}" href="/territorio/{html.escape(distrito_slug)}?estado=resuelto">Resueltos ({resueltos})</a>
+                <a class="{active('oculto')}" href="/territorio/{html.escape(distrito_slug)}?estado=oculto">Ocultos ({ocultos})</a>
+                <a class="{active('todos')}" href="/territorio/{html.escape(distrito_slug)}?estado=todos">Todos</a>
             </nav>
 
             <form method="post" action="/incidentes/estado-lote">
-                <input type="hidden" name="volver" value="/panel/berisso?estado={html.escape(estado)}">
+                <input type="hidden" name="volver" value="/territorio/{html.escape(distrito_slug)}?estado={html.escape(estado)}">
 
                 <div class="toolbar">
                     <strong>Acción sobre seleccionados:</strong>
@@ -743,13 +863,205 @@ def panel_berisso(estado: str = "pendiente"):
                     </div>
 
                     <aside class="side">
-                        <h2>Categorías</h2>
-                        <ul>
-                            {categorias_html}
-                        </ul>
+                        <div class="box">
+                            <h2>Barrios</h2>
+                            <ul>
+                                {barrios_html}
+                            </ul>
+                        </div>
+
+                        <div class="box">
+                            <h2>Categorías</h2>
+                            <ul>
+                                {categorias_html}
+                            </ul>
+                        </div>
                     </aside>
                 </section>
             </form>
+        </main>
+    </body>
+    </html>
+    """
+
+    return HTMLResponse(content=html_response)
+
+
+@app.get("/reportes/{distrito_slug}", response_class=HTMLResponse)
+def reportes_publicos(distrito_slug: str):
+    ciudad = ciudad_desde_slug(distrito_slug)
+
+    conn = db_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, barrio, categoria, descripcion, foto_url, fecha_reporte
+        FROM incidentes
+        WHERE LOWER(ciudad) = LOWER(%s)
+          AND estado = 'publicado'
+        ORDER BY fecha_reporte DESC
+        LIMIT 24;
+    """, (ciudad,))
+
+    incidentes = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    cards_html = ""
+
+    for item in incidentes:
+        id_incidente, barrio, categoria, descripcion, foto_url, fecha = item
+
+        barrio_safe = html.escape(barrio or "")
+        categoria_safe = html.escape(categoria or "")
+        descripcion_safe = html.escape(descripcion or "")
+
+        if foto_url:
+            nombre_foto = foto_url.split("/")[-1]
+            imagen_html = f'<img src="/foto/{html.escape(nombre_foto)}" alt="Foto del reporte">'
+        else:
+            imagen_html = '<div class="sin-foto">Sin foto</div>'
+
+        cards_html += f"""
+        <article class="card">
+            <div class="thumb">{imagen_html}</div>
+            <div class="contenido">
+                <div class="meta">#{id_incidente} · {fecha.strftime('%d/%m/%Y %H:%M')}</div>
+                <h3>{categoria_safe}</h3>
+                <p class="barrio">{barrio_safe}</p>
+                <p>{descripcion_safe}</p>
+            </div>
+        </article>
+        """
+
+    if not cards_html:
+        cards_html = '<p class="vacio">Todavía no hay reportes publicados para este distrito.</p>'
+
+    html_response = f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Reportes {html.escape(ciudad)} - Provincia Libertaria</title>
+        <style>
+            body {{
+                margin: 0;
+                font-family: Arial, sans-serif;
+                background: #48020c;
+                color: #ffffff;
+            }}
+
+            .wrap {{
+                max-width: 1180px;
+                margin: 0 auto;
+                padding: 32px 18px;
+            }}
+
+            .eyebrow {{
+                color: #f1d571;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: .08em;
+                font-size: 13px;
+            }}
+
+            h1 {{
+                margin: 8px 0 6px;
+                font-size: 38px;
+                color: #f1d571;
+            }}
+
+            .sub {{
+                margin: 0 0 28px;
+                color: #f7e7b0;
+            }}
+
+            .cards {{
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 16px;
+            }}
+
+            .card {{
+                background: #ffffff;
+                color: #121212;
+                border-radius: 14px;
+                overflow: hidden;
+                border: 1px solid #b98b31;
+            }}
+
+            .thumb {{
+                width: 100%;
+                height: 180px;
+                background: #240106;
+            }}
+
+            .thumb img {{
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                display: block;
+            }}
+
+            .sin-foto {{
+                height: 100%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: #f1d571;
+                font-weight: 700;
+            }}
+
+            .contenido {{
+                padding: 16px;
+            }}
+
+            .meta {{
+                color: #777;
+                font-size: 12px;
+                margin-bottom: 8px;
+            }}
+
+            .card h3 {{
+                margin: 0 0 6px;
+                color: #9d1018;
+                font-size: 20px;
+            }}
+
+            .barrio {{
+                margin: 0 0 10px;
+                font-weight: 700;
+            }}
+
+            .vacio {{
+                color: #f1d571;
+                font-weight: 700;
+            }}
+
+            @media (max-width: 850px) {{
+                .cards {{
+                    grid-template-columns: 1fr;
+                }}
+
+                h1 {{
+                    font-size: 32px;
+                }}
+            }}
+        </style>
+    </head>
+    <body>
+        <main class="wrap">
+            <section>
+                <div class="eyebrow">Mapa de Barrio</div>
+                <h1>Reportes de {html.escape(ciudad)}</h1>
+                <p class="sub">Problemas publicados y verificados por referentes territoriales.</p>
+            </section>
+
+            <section class="cards">
+                {cards_html}
+            </section>
         </main>
     </body>
     </html>
