@@ -1,4 +1,6 @@
-import os
+from pathlib import Path
+
+code = r'''import os
 import uuid
 import base64
 import json
@@ -43,6 +45,7 @@ class Incidente(BaseModel):
     barrio: str
     categoria: str
     descripcion: str
+    direccion: Optional[str] = None
     foto_url: Optional[str] = None
     estado: Optional[str] = "pendiente"
     origen: Optional[str] = "vecino"
@@ -61,6 +64,7 @@ class IncidenteFotoJSON(BaseModel):
     barrio: str
     categoria: str
     descripcion: str
+    direccion: Optional[str] = None
     foto: Optional[FotoBase64] = None
     estado: Optional[str] = "pendiente"
     origen: Optional[str] = "vecino"
@@ -84,6 +88,13 @@ def normalizar_texto(valor: Optional[str]) -> Optional[str]:
     if valor is None:
         return None
     return " ".join(valor.strip().split()).title()
+
+
+def normalizar_direccion(valor: Optional[str]) -> Optional[str]:
+    if valor is None:
+        return None
+    limpio = " ".join(valor.strip().split())
+    return limpio if limpio else None
 
 
 def ciudad_desde_slug(slug: str) -> str:
@@ -116,6 +127,7 @@ def insertar_incidente(
     barrio,
     categoria,
     descripcion,
+    direccion=None,
     foto_url=None,
     estado="pendiente",
     origen="vecino",
@@ -126,20 +138,22 @@ def insertar_incidente(
     ciudad = normalizar_texto(ciudad)
     barrio = normalizar_texto(barrio)
     categoria = normalizar_texto(categoria)
+    direccion = normalizar_direccion(direccion)
 
     conn = db_conn()
     cur = conn.cursor()
 
     cur.execute("""
         INSERT INTO incidentes
-        (ciudad, barrio, categoria, descripcion, foto_url, estado, origen, fuente, latitud, longitud)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        (ciudad, barrio, categoria, descripcion, direccion, foto_url, estado, origen, fuente, latitud, longitud)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id;
     """, (
         ciudad,
         barrio,
         categoria,
         descripcion,
+        direccion,
         foto_url,
         estado,
         origen,
@@ -256,6 +270,7 @@ def crear_incidente(incidente: Incidente):
             barrio=incidente.barrio,
             categoria=incidente.categoria,
             descripcion=incidente.descripcion,
+            direccion=incidente.direccion,
             foto_url=incidente.foto_url,
             estado=incidente.estado or "pendiente",
             origen=incidente.origen,
@@ -280,6 +295,7 @@ def crear_incidente_con_foto_json(incidente: IncidenteFotoJSON):
             barrio=incidente.barrio,
             categoria=incidente.categoria,
             descripcion=incidente.descripcion,
+            direccion=incidente.direccion,
             foto_url=foto_url,
             estado=incidente.estado or "pendiente",
             origen=incidente.origen,
@@ -355,7 +371,7 @@ def panel_distrito(distrito_slug: str, estado: str = "pendiente"):
 
     if estado == "todos":
         cur.execute("""
-            SELECT id, barrio, categoria, descripcion, foto_url, fecha_reporte, estado
+            SELECT id, barrio, categoria, descripcion, direccion, foto_url, fecha_reporte, estado
             FROM incidentes
             WHERE LOWER(ciudad) = LOWER(%s)
             ORDER BY fecha_reporte DESC
@@ -363,7 +379,7 @@ def panel_distrito(distrito_slug: str, estado: str = "pendiente"):
         """, (ciudad,))
     else:
         cur.execute("""
-            SELECT id, barrio, categoria, descripcion, foto_url, fecha_reporte, estado
+            SELECT id, barrio, categoria, descripcion, direccion, foto_url, fecha_reporte, estado
             FROM incidentes
             WHERE LOWER(ciudad) = LOWER(%s)
               AND estado = %s
@@ -399,12 +415,15 @@ def panel_distrito(distrito_slug: str, estado: str = "pendiente"):
     cards_html = ""
 
     for item in incidentes:
-        id_incidente, barrio, categoria, descripcion, foto_url, fecha, estado_actual = item
+        id_incidente, barrio, categoria, descripcion, direccion, foto_url, fecha, estado_actual = item
 
         barrio_safe = html.escape(barrio or "")
         categoria_safe = html.escape(categoria or "")
         descripcion_safe = html.escape(descripcion or "")
+        direccion_safe = html.escape(direccion or "")
         estado_safe = html.escape(estado_actual or "")
+
+        direccion_html = f'<p class="direccion">🧭 {direccion_safe}</p>' if direccion_safe else ""
 
         if foto_url:
             nombre_foto = foto_url.split("/")[-1]
@@ -425,7 +444,8 @@ def panel_distrito(distrito_slug: str, estado: str = "pendiente"):
                 <div class="meta">#{id_incidente} · {fecha.strftime('%d/%m/%Y %H:%M')}</div>
                 <div class="estado estado-{estado_safe}">{estado_safe}</div>
                 <h3>{categoria_safe}</h3>
-                <p class="barrio">{barrio_safe}</p>
+                <p class="barrio">📍 {barrio_safe}</p>
+                {direccion_html}
                 <p>{descripcion_safe}</p>
             </div>
         </article>
@@ -697,8 +717,14 @@ def panel_distrito(distrito_slug: str, estado: str = "pendiente"):
             }}
 
             .barrio {{
+                margin: 0 0 8px;
+                font-weight: 700;
+            }}
+
+            .direccion {{
                 margin: 0 0 10px;
                 font-weight: 700;
+                color: #555;
             }}
 
             .side {{
@@ -876,7 +902,7 @@ def reportes_publicos(distrito_slug: str):
     categorias = cur.fetchall()
 
     cur.execute("""
-        SELECT id, barrio, categoria, descripcion, foto_url, fecha_reporte
+        SELECT id, barrio, categoria, descripcion, direccion, foto_url, fecha_reporte
         FROM incidentes
         WHERE LOWER(ciudad) = LOWER(%s)
           AND estado = 'publicado'
@@ -894,11 +920,14 @@ def reportes_publicos(distrito_slug: str):
     cards_html = ""
 
     for item in incidentes:
-        id_incidente, barrio, categoria, descripcion, foto_url, fecha = item
+        id_incidente, barrio, categoria, descripcion, direccion, foto_url, fecha = item
 
         barrio_safe = html.escape(barrio or "")
         categoria_safe = html.escape(categoria or "")
         descripcion_safe = html.escape(descripcion or "")
+        direccion_safe = html.escape(direccion or "")
+
+        direccion_html = f'<p class="direccion">🧭 {direccion_safe}</p>' if direccion_safe else ""
 
         if foto_url:
             nombre_foto = foto_url.split("/")[-1]
@@ -913,6 +942,7 @@ def reportes_publicos(distrito_slug: str):
                 <div class="meta">#{id_incidente} · {fecha.strftime('%d/%m/%Y %H:%M')}</div>
                 <h3>{categoria_safe}</h3>
                 <p class="barrio">📍 {barrio_safe}</p>
+                {direccion_html}
                 <p>{descripcion_safe}</p>
             </div>
         </article>
@@ -1102,8 +1132,14 @@ def reportes_publicos(distrito_slug: str):
             }}
 
             .barrio {{
+                margin: 0 0 8px;
+                font-weight: 700;
+            }}
+
+            .direccion {{
                 margin: 0 0 10px;
                 font-weight: 700;
+                color: #555;
             }}
 
             .side {{
@@ -1267,3 +1303,8 @@ async def debug_request(request: Request):
     print("DEBUG FORM DATA:", json.dumps(form_data, ensure_ascii=False)[:3000], flush=True)
 
     return {"ok": True, "type": "form", "keys": list(form.keys())}
+'''
+
+path = Path("/mnt/data/main_actualizado_direccion.py")
+path.write_text(code, encoding="utf-8")
+print(f"Archivo creado: {path}") 
