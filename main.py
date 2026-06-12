@@ -4,11 +4,11 @@ import base64
 import json
 import html
 from io import BytesIO
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from PIL import Image
 import psycopg2
@@ -24,6 +24,8 @@ app.mount(
 DATABASE_URL = os.getenv("DATABASE_URL")
 UPLOAD_DIR = "/data/uploads/incidentes"
 PUBLIC_UPLOAD_BASE = "/uploads/incidentes"
+
+ESTADOS_VALIDOS = ["pendiente", "publicado", "resuelto", "oculto"]
 
 
 class Registro(BaseModel):
@@ -42,7 +44,7 @@ class Incidente(BaseModel):
     categoria: str
     descripcion: str
     foto_url: Optional[str] = None
-    estado: Optional[str] = "nuevo"
+    estado: Optional[str] = "pendiente"
     origen: Optional[str] = "vecino"
     fuente: Optional[str] = "formulario"
     latitud: Optional[float] = None
@@ -60,7 +62,7 @@ class IncidenteFotoJSON(BaseModel):
     categoria: str
     descripcion: str
     foto: Optional[FotoBase64] = None
-    estado: Optional[str] = "nuevo"
+    estado: Optional[str] = "pendiente"
     origen: Optional[str] = "vecino"
     fuente: Optional[str] = "formulario"
     latitud: Optional[float] = None
@@ -84,7 +86,7 @@ def insertar_incidente(
     categoria,
     descripcion,
     foto_url=None,
-    estado="nuevo",
+    estado="pendiente",
     origen="vecino",
     fuente="formulario",
     latitud=None,
@@ -119,28 +121,29 @@ def insertar_incidente(
     return nuevo_id
 
 
-def procesar_foto_upload(foto: UploadFile) -> Optional[str]:
-    if not foto or not foto.filename:
-        return None
+def actualizar_estado_incidentes(ids: List[int], estado: str):
+    if estado not in ESTADOS_VALIDOS:
+        raise HTTPException(status_code=400, detail="Estado inválido")
 
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    if not ids:
+        return 0
 
-    if foto.content_type not in ["image/jpeg", "image/png", "image/webp"]:
-        raise HTTPException(status_code=400, detail="Formato de imagen no permitido")
+    conn = db_conn()
+    cur = conn.cursor()
 
-    filename = f"{uuid.uuid4().hex}.webp"
-    file_path = os.path.join(UPLOAD_DIR, filename)
+    cur.execute("""
+        UPDATE incidentes
+        SET estado = %s,
+            fecha_actualizacion = NOW()
+        WHERE id = ANY(%s);
+    """, (estado, ids))
 
-    try:
-        image = Image.open(foto.file)
-        image = image.convert("RGB")
-        image.thumbnail((800, 800))
-        image.save(file_path, "WEBP", quality=55, method=6, optimize=True)
+    afectados = cur.rowcount
+    conn.commit()
+    cur.close()
+    conn.close()
 
-        return f"{PUBLIC_UPLOAD_BASE}/{filename}"
-
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"No se pudo procesar la imagen: {str(e)}")
+    return afectados
 
 
 def procesar_foto_base64(foto: FotoBase64) -> Optional[str]:
@@ -219,7 +222,7 @@ def crear_incidente(incidente: Incidente):
             categoria=incidente.categoria,
             descripcion=incidente.descripcion,
             foto_url=incidente.foto_url,
-            estado=incidente.estado,
+            estado=incidente.estado or "pendiente",
             origen=incidente.origen,
             fuente=incidente.fuente,
             latitud=incidente.latitud,
@@ -227,38 +230,6 @@ def crear_incidente(incidente: Incidente):
         )
 
         return {"ok": True, "id": nuevo_id}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/incidente-foto")
-def crear_incidente_con_foto(
-    ciudad: str = Form(...),
-    barrio: str = Form(...),
-    categoria: str = Form(...),
-    descripcion: str = Form(...),
-    origen: str = Form("vecino"),
-    fuente: str = Form("formulario"),
-    foto: Optional[UploadFile] = File(None),
-):
-    try:
-        foto_url = procesar_foto_upload(foto) if foto else None
-
-        nuevo_id = insertar_incidente(
-            ciudad=ciudad,
-            barrio=barrio,
-            categoria=categoria,
-            descripcion=descripcion,
-            foto_url=foto_url,
-            origen=origen,
-            fuente=fuente,
-        )
-
-        return {"ok": True, "id": nuevo_id, "foto_url": foto_url}
-
-    except HTTPException:
-        raise
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -275,7 +246,7 @@ def crear_incidente_con_foto_json(incidente: IncidenteFotoJSON):
             categoria=incidente.categoria,
             descripcion=incidente.descripcion,
             foto_url=foto_url,
-            estado=incidente.estado,
+            estado=incidente.estado or "pendiente",
             origen=incidente.origen,
             fuente=incidente.fuente,
             latitud=incidente.latitud,
@@ -291,9 +262,22 @@ def crear_incidente_con_foto_json(incidente: IncidenteFotoJSON):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/incidentes/estado-lote")
+def cambiar_estado_lote(
+    ids: List[int] = Form(default=[]),
+    estado: str = Form(...),
+    volver: str = Form("/panel/berisso")
+):
+    actualizar_estado_incidentes(ids, estado)
+    return RedirectResponse(url=volver, status_code=303)
+
+
 @app.get("/panel/berisso", response_class=HTMLResponse)
-def panel_berisso():
+def panel_berisso(estado: str = "pendiente"):
     ciudad = "Berisso"
+
+    if estado not in ESTADOS_VALIDOS and estado != "todos":
+        estado = "pendiente"
 
     conn = db_conn()
     cur = conn.cursor()
@@ -306,11 +290,17 @@ def panel_berisso():
     adhesiones = cur.fetchone()[0]
 
     cur.execute("""
-        SELECT COUNT(*)
+        SELECT estado, COUNT(*)
         FROM incidentes
-        WHERE LOWER(ciudad) = LOWER(%s);
+        WHERE LOWER(ciudad) = LOWER(%s)
+        GROUP BY estado;
     """, (ciudad,))
-    incidentes_total = cur.fetchone()[0]
+    estados_data = dict(cur.fetchall())
+
+    pendientes = estados_data.get("pendiente", 0)
+    publicados = estados_data.get("publicado", 0)
+    resueltos = estados_data.get("resuelto", 0)
+    ocultos = estados_data.get("oculto", 0)
 
     cur.execute("""
         SELECT COUNT(DISTINCT barrio)
@@ -319,33 +309,44 @@ def panel_berisso():
     """, (ciudad,))
     barrios_activos = cur.fetchone()[0]
 
-    cur.execute("""
-        SELECT categoria, COUNT(*) AS total
-        FROM incidentes
-        WHERE LOWER(ciudad) = LOWER(%s)
-        GROUP BY categoria
-        ORDER BY total DESC
-        LIMIT 1;
-    """, (ciudad,))
-    categoria_principal_row = cur.fetchone()
-    categoria_principal = categoria_principal_row[0] if categoria_principal_row else "Sin datos"
+    if estado == "todos":
+        cur.execute("""
+            SELECT id, barrio, categoria, descripcion, foto_url, fecha_reporte, estado
+            FROM incidentes
+            WHERE LOWER(ciudad) = LOWER(%s)
+            ORDER BY fecha_reporte DESC
+            LIMIT 24;
+        """, (ciudad,))
+    else:
+        cur.execute("""
+            SELECT id, barrio, categoria, descripcion, foto_url, fecha_reporte, estado
+            FROM incidentes
+            WHERE LOWER(ciudad) = LOWER(%s)
+              AND estado = %s
+            ORDER BY fecha_reporte DESC
+            LIMIT 24;
+        """, (ciudad, estado))
 
-    cur.execute("""
-        SELECT id, barrio, categoria, descripcion, foto_url, fecha_reporte
-        FROM incidentes
-        WHERE LOWER(ciudad) = LOWER(%s)
-        ORDER BY fecha_reporte DESC
-        LIMIT 12;
-    """, (ciudad,))
     incidentes = cur.fetchall()
 
-    cur.execute("""
-        SELECT categoria, COUNT(*) AS total
-        FROM incidentes
-        WHERE LOWER(ciudad) = LOWER(%s)
-        GROUP BY categoria
-        ORDER BY total DESC;
-    """, (ciudad,))
+    if estado == "todos":
+        cur.execute("""
+            SELECT categoria, COUNT(*) AS total
+            FROM incidentes
+            WHERE LOWER(ciudad) = LOWER(%s)
+            GROUP BY categoria
+            ORDER BY total DESC;
+        """, (ciudad,))
+    else:
+        cur.execute("""
+            SELECT categoria, COUNT(*) AS total
+            FROM incidentes
+            WHERE LOWER(ciudad) = LOWER(%s)
+              AND estado = %s
+            GROUP BY categoria
+            ORDER BY total DESC;
+        """, (ciudad, estado))
+
     categorias = cur.fetchall()
 
     cur.close()
@@ -354,11 +355,12 @@ def panel_berisso():
     cards_html = ""
 
     for item in incidentes:
-        id_incidente, barrio, categoria, descripcion, foto_url, fecha = item
+        id_incidente, barrio, categoria, descripcion, foto_url, fecha, estado_actual = item
 
-        barrio = html.escape(barrio or "")
-        categoria = html.escape(categoria or "")
-        descripcion = html.escape(descripcion or "")
+        barrio_safe = html.escape(barrio or "")
+        categoria_safe = html.escape(categoria or "")
+        descripcion_safe = html.escape(descripcion or "")
+        estado_safe = html.escape(estado_actual or "")
 
         if foto_url:
             nombre_foto = foto_url.split("/")[-1]
@@ -368,12 +370,19 @@ def panel_berisso():
 
         cards_html += f"""
         <article class="card">
+            <label class="check">
+                <input type="checkbox" name="ids" value="{id_incidente}">
+                Seleccionar
+            </label>
+
             <div class="thumb">{imagen_html}</div>
+
             <div class="contenido">
                 <div class="meta">#{id_incidente} · {fecha.strftime('%d/%m/%Y %H:%M')}</div>
-                <h3>{categoria}</h3>
-                <p class="barrio">{barrio}</p>
-                <p>{descripcion}</p>
+                <div class="estado estado-{estado_safe}">{estado_safe}</div>
+                <h3>{categoria_safe}</h3>
+                <p class="barrio">{barrio_safe}</p>
+                <p>{descripcion_safe}</p>
             </div>
         </article>
         """
@@ -389,10 +398,13 @@ def panel_berisso():
         """
 
     if not cards_html:
-        cards_html = '<p class="vacio">Todavía no hay reportes para Berisso.</p>'
+        cards_html = '<p class="vacio">No hay reportes en esta vista.</p>'
 
     if not categorias_html:
         categorias_html = '<li><span>Sin datos</span><strong>0</strong></li>'
+
+    def active(e):
+        return "active" if estado == e else ""
 
     html_response = f"""
     <!DOCTYPE html>
@@ -413,10 +425,6 @@ def panel_berisso():
                 max-width: 1180px;
                 margin: 0 auto;
                 padding: 32px 18px;
-            }}
-
-            .top {{
-                margin-bottom: 28px;
             }}
 
             .eyebrow {{
@@ -463,6 +471,67 @@ def panel_berisso():
                 font-size: 28px;
             }}
 
+            .tabs {{
+                display: flex;
+                flex-wrap: wrap;
+                gap: 10px;
+                margin: 22px 0;
+            }}
+
+            .tabs a {{
+                color: #f1d571;
+                border: 1px solid #b98b31;
+                padding: 10px 14px;
+                border-radius: 999px;
+                text-decoration: none;
+                font-weight: 700;
+            }}
+
+            .tabs a.active {{
+                background: #b98b31;
+                color: #121212;
+            }}
+
+            .toolbar {{
+                background: #650713;
+                border: 1px solid #b98b31;
+                border-radius: 12px;
+                padding: 14px;
+                margin: 18px 0;
+                display: flex;
+                gap: 10px;
+                flex-wrap: wrap;
+                align-items: center;
+            }}
+
+            .toolbar button {{
+                border: 0;
+                border-radius: 6px;
+                padding: 10px 14px;
+                font-weight: 700;
+                cursor: pointer;
+            }}
+
+            .btn-publicar {{
+                background: #f1d571;
+                color: #121212;
+            }}
+
+            .btn-resuelto {{
+                background: #ffffff;
+                color: #121212;
+            }}
+
+            .btn-oculto {{
+                background: #121212;
+                color: #ffffff;
+            }}
+
+            .btn-pendiente {{
+                background: #9d1018;
+                color: #ffffff;
+            }}
+
             .grid {{
                 display: grid;
                 grid-template-columns: 1fr 320px;
@@ -482,6 +551,15 @@ def panel_berisso():
                 border-radius: 14px;
                 overflow: hidden;
                 border: 1px solid #b98b31;
+                position: relative;
+            }}
+
+            .check {{
+                display: block;
+                padding: 10px 12px;
+                background: #f7f1df;
+                font-size: 13px;
+                font-weight: 700;
             }}
 
             .thumb {{
@@ -514,6 +592,35 @@ def panel_berisso():
                 color: #777;
                 font-size: 12px;
                 margin-bottom: 8px;
+            }}
+
+            .estado {{
+                display: inline-block;
+                padding: 4px 8px;
+                border-radius: 999px;
+                font-size: 12px;
+                font-weight: 700;
+                margin-bottom: 8px;
+            }}
+
+            .estado-pendiente {{
+                background: #f1d571;
+                color: #121212;
+            }}
+
+            .estado-publicado {{
+                background: #dff5df;
+                color: #145214;
+            }}
+
+            .estado-resuelto {{
+                background: #e8f0ff;
+                color: #123f7a;
+            }}
+
+            .estado-oculto {{
+                background: #222;
+                color: #fff;
             }}
 
             .card h3 {{
@@ -583,7 +690,7 @@ def panel_berisso():
     </head>
     <body>
         <main class="wrap">
-            <section class="top">
+            <section>
                 <div class="eyebrow">Panel distrital</div>
                 <h1>Berisso</h1>
                 <p class="sub">Vista territorial de adhesiones e incidentes reportados.</p>
@@ -595,34 +702,54 @@ def panel_berisso():
                     <strong>{adhesiones}</strong>
                 </div>
                 <div class="stat">
-                    <span>Incidentes</span>
-                    <strong>{incidentes_total}</strong>
+                    <span>Pendientes</span>
+                    <strong>{pendientes}</strong>
+                </div>
+                <div class="stat">
+                    <span>Publicados</span>
+                    <strong>{publicados}</strong>
                 </div>
                 <div class="stat">
                     <span>Barrios activos</span>
                     <strong>{barrios_activos}</strong>
                 </div>
-                <div class="stat">
-                    <span>Categoría principal</span>
-                    <strong style="font-size:20px">{html.escape(categoria_principal)}</strong>
-                </div>
             </section>
 
-            <section class="grid">
-                <div>
-                    <h2>Últimos reportes</h2>
-                    <div class="cards">
-                        {cards_html}
+            <nav class="tabs">
+                <a class="{active('pendiente')}" href="/panel/berisso?estado=pendiente">Pendientes ({pendientes})</a>
+                <a class="{active('publicado')}" href="/panel/berisso?estado=publicado">Publicados ({publicados})</a>
+                <a class="{active('resuelto')}" href="/panel/berisso?estado=resuelto">Resueltos ({resueltos})</a>
+                <a class="{active('oculto')}" href="/panel/berisso?estado=oculto">Ocultos ({ocultos})</a>
+                <a class="{active('todos')}" href="/panel/berisso?estado=todos">Todos</a>
+            </nav>
+
+            <form method="post" action="/incidentes/estado-lote">
+                <input type="hidden" name="volver" value="/panel/berisso?estado={html.escape(estado)}">
+
+                <div class="toolbar">
+                    <strong>Acción sobre seleccionados:</strong>
+                    <button class="btn-publicar" type="submit" name="estado" value="publicado">Aprobar / Publicar</button>
+                    <button class="btn-resuelto" type="submit" name="estado" value="resuelto">Marcar resuelto</button>
+                    <button class="btn-oculto" type="submit" name="estado" value="oculto">Ocultar</button>
+                    <button class="btn-pendiente" type="submit" name="estado" value="pendiente">Volver a pendiente</button>
+                </div>
+
+                <section class="grid">
+                    <div>
+                        <h2>Reportes: {html.escape(estado)}</h2>
+                        <div class="cards">
+                            {cards_html}
+                        </div>
                     </div>
-                </div>
 
-                <aside class="side">
-                    <h2>Categorías</h2>
-                    <ul>
-                        {categorias_html}
-                    </ul>
-                </aside>
-            </section>
+                    <aside class="side">
+                        <h2>Categorías</h2>
+                        <ul>
+                            {categorias_html}
+                        </ul>
+                    </aside>
+                </section>
+            </form>
         </main>
     </body>
     </html>
