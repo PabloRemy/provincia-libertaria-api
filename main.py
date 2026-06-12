@@ -1,6 +1,4 @@
-from pathlib import Path
-
-code = r'''import os
+import os
 import uuid
 import base64
 import json
@@ -1303,8 +1301,3 @@ async def debug_request(request: Request):
     print("DEBUG FORM DATA:", json.dumps(form_data, ensure_ascii=False)[:3000], flush=True)
 
     return {"ok": True, "type": "form", "keys": list(form.keys())}
-'''
-
-path = Path("/mnt/data/main_actualizado_direccion.py")
-path.write_text(code, encoding="utf-8")
-print(f"Archivo creado: {path}") 
