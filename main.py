@@ -80,6 +80,12 @@ def db_conn():
     return psycopg2.connect(DATABASE_URL)
 
 
+def normalizar_texto(valor: Optional[str]) -> Optional[str]:
+    if valor is None:
+        return None
+    return " ".join(valor.strip().split()).title()
+
+
 def ciudad_desde_slug(slug: str) -> str:
     mapa = {
         "berisso": "Berisso",
@@ -90,7 +96,7 @@ def ciudad_desde_slug(slug: str) -> str:
         "quilmes": "Quilmes",
         "avellaneda": "Avellaneda",
         "lanus": "Lanús",
-        "lomas-de-zamora": "Lomas de Zamora",
+        "lomas-de-zamora": "Lomas De Zamora",
         "almirante-brown": "Almirante Brown",
         "florencio-varela": "Florencio Varela",
         "berazategui": "Berazategui",
@@ -117,6 +123,10 @@ def insertar_incidente(
     latitud=None,
     longitud=None,
 ):
+    ciudad = normalizar_texto(ciudad)
+    barrio = normalizar_texto(barrio)
+    categoria = normalizar_texto(categoria)
+
     conn = db_conn()
     cur = conn.cursor()
 
@@ -171,30 +181,6 @@ def actualizar_estado_incidentes(ids: List[int], estado: str):
     return afectados
 
 
-def procesar_foto_upload(foto: UploadFile) -> Optional[str]:
-    if not foto or not foto.filename:
-        return None
-
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-    if foto.content_type not in ["image/jpeg", "image/png", "image/webp"]:
-        raise HTTPException(status_code=400, detail="Formato de imagen no permitido")
-
-    filename = f"{uuid.uuid4().hex}.webp"
-    file_path = os.path.join(UPLOAD_DIR, filename)
-
-    try:
-        image = Image.open(foto.file)
-        image = image.convert("RGB")
-        image.thumbnail((800, 800))
-        image.save(file_path, "WEBP", quality=55, method=6, optimize=True)
-
-        return f"{PUBLIC_UPLOAD_BASE}/{filename}"
-
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"No se pudo procesar la imagen: {str(e)}")
-
-
 def procesar_foto_base64(foto: FotoBase64) -> Optional[str]:
     if not foto or not foto.content:
         return None
@@ -245,8 +231,8 @@ def crear_registro(registro: Registro):
             registro.nombre_apellido,
             registro.whatsapp,
             registro.email,
-            registro.ciudad,
-            registro.barrio,
+            normalizar_texto(registro.ciudad),
+            normalizar_texto(registro.barrio),
             registro.participacion,
             registro.mensaje
         ))
@@ -279,38 +265,6 @@ def crear_incidente(incidente: Incidente):
         )
 
         return {"ok": True, "id": nuevo_id}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/incidente-foto")
-def crear_incidente_con_foto(
-    ciudad: str = Form(...),
-    barrio: str = Form(...),
-    categoria: str = Form(...),
-    descripcion: str = Form(...),
-    origen: str = Form("vecino"),
-    fuente: str = Form("formulario"),
-    foto: Optional[UploadFile] = File(None),
-):
-    try:
-        foto_url = procesar_foto_upload(foto) if foto else None
-
-        nuevo_id = insertar_incidente(
-            ciudad=ciudad,
-            barrio=barrio,
-            categoria=categoria,
-            descripcion=descripcion,
-            foto_url=foto_url,
-            origen=origen,
-            fuente=fuente,
-        )
-
-        return {"ok": True, "id": nuevo_id, "foto_url": foto_url}
-
-    except HTTPException:
-        raise
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -389,10 +343,10 @@ def panel_distrito(distrito_slug: str, estado: str = "pendiente"):
     ocultos = estados_data.get("oculto", 0)
 
     cur.execute("""
-        SELECT barrio, COUNT(*) AS total
+        SELECT INITCAP(LOWER(TRIM(barrio))) AS barrio_normalizado, COUNT(*) AS total
         FROM incidentes
         WHERE LOWER(ciudad) = LOWER(%s)
-        GROUP BY barrio
+        GROUP BY barrio_normalizado
         ORDER BY total DESC;
     """, (ciudad,))
     barrios = cur.fetchall()
@@ -492,7 +446,7 @@ def panel_distrito(distrito_slug: str, estado: str = "pendiente"):
     for barrio, total in barrios:
         barrios_html += f"""
         <li>
-            <span>{html.escape(barrio or "Sin barrio")}</span>
+            <span>{html.escape(barrio or "Sin Barrio")}</span>
             <strong>{total}</strong>
         </li>
         """
@@ -626,23 +580,23 @@ def panel_distrito(distrito_slug: str, estado: str = "pendiente"):
                 cursor: pointer;
             }}
 
-            .btn-publicar {{
-                background: #f1d571;
-                color: #121212;
-            }}
-
             .btn-resuelto {{
                 background: #24a148;
                 color: #ffffff;
             }}
 
-            .btn-oculto {{
-                background: #121212;
-                color: #ffffff;
+            .btn-publicar {{
+                background: #f1d571;
+                color: #121212;
             }}
 
             .btn-pendiente {{
                 background: #9d1018;
+                color: #ffffff;
+            }}
+
+            .btn-oculto {{
+                background: #121212;
                 color: #ffffff;
             }}
 
@@ -665,7 +619,6 @@ def panel_distrito(distrito_slug: str, estado: str = "pendiente"):
                 border-radius: 14px;
                 overflow: hidden;
                 border: 1px solid #b98b31;
-                position: relative;
             }}
 
             .check {{
@@ -728,8 +681,8 @@ def panel_distrito(distrito_slug: str, estado: str = "pendiente"):
             }}
 
             .estado-resuelto {{
-                background: #e8f0ff;
-                color: #123f7a;
+                background: #24a148;
+                color: #ffffff;
             }}
 
             .estado-oculto {{
@@ -848,10 +801,10 @@ def panel_distrito(distrito_slug: str, estado: str = "pendiente"):
 
                 <div class="toolbar">
                     <strong>Acción sobre seleccionados:</strong>
-                    <button class="btn-publicar" type="submit" name="estado" value="publicado">Aprobar / Publicar</button>
                     <button class="btn-resuelto" type="submit" name="estado" value="resuelto">Marcar resuelto</button>
-                    <button class="btn-oculto" type="submit" name="estado" value="oculto">Ocultar</button>
+                    <button class="btn-publicar" type="submit" name="estado" value="publicado">Aprobar / Publicar</button>
                     <button class="btn-pendiente" type="submit" name="estado" value="pendiente">Volver a pendiente</button>
+                    <button class="btn-oculto" type="submit" name="estado" value="oculto">Ocultar</button>
                 </div>
 
                 <section class="grid">
@@ -895,6 +848,34 @@ def reportes_publicos(distrito_slug: str):
     cur = conn.cursor()
 
     cur.execute("""
+        SELECT COUNT(*)
+        FROM incidentes
+        WHERE LOWER(ciudad) = LOWER(%s)
+          AND estado = 'publicado';
+    """, (ciudad,))
+    reportes_publicados = cur.fetchone()[0]
+
+    cur.execute("""
+        SELECT INITCAP(LOWER(TRIM(barrio))) AS barrio_normalizado, COUNT(*) AS total
+        FROM incidentes
+        WHERE LOWER(ciudad) = LOWER(%s)
+          AND estado = 'publicado'
+        GROUP BY barrio_normalizado
+        ORDER BY total DESC;
+    """, (ciudad,))
+    barrios = cur.fetchall()
+
+    cur.execute("""
+        SELECT categoria, COUNT(*) AS total
+        FROM incidentes
+        WHERE LOWER(ciudad) = LOWER(%s)
+          AND estado = 'publicado'
+        GROUP BY categoria
+        ORDER BY total DESC;
+    """, (ciudad,))
+    categorias = cur.fetchall()
+
+    cur.execute("""
         SELECT id, barrio, categoria, descripcion, foto_url, fecha_reporte
         FROM incidentes
         WHERE LOWER(ciudad) = LOWER(%s)
@@ -902,11 +883,13 @@ def reportes_publicos(distrito_slug: str):
         ORDER BY fecha_reporte DESC
         LIMIT 24;
     """, (ciudad,))
-
     incidentes = cur.fetchall()
 
     cur.close()
     conn.close()
+
+    barrios_activos = len(barrios)
+    categorias_detectadas = len(categorias)
 
     cards_html = ""
 
@@ -929,14 +912,40 @@ def reportes_publicos(distrito_slug: str):
             <div class="contenido">
                 <div class="meta">#{id_incidente} · {fecha.strftime('%d/%m/%Y %H:%M')}</div>
                 <h3>{categoria_safe}</h3>
-                <p class="barrio">{barrio_safe}</p>
+                <p class="barrio">📍 {barrio_safe}</p>
                 <p>{descripcion_safe}</p>
             </div>
         </article>
         """
 
+    barrios_html = ""
+
+    for barrio, total in barrios:
+        barrios_html += f"""
+        <li>
+            <span>{html.escape(barrio or "Sin Barrio")}</span>
+            <strong>{total}</strong>
+        </li>
+        """
+
+    categorias_html = ""
+
+    for categoria, total in categorias:
+        categorias_html += f"""
+        <li>
+            <span>{html.escape(categoria)}</span>
+            <strong>{total}</strong>
+        </li>
+        """
+
     if not cards_html:
         cards_html = '<p class="vacio">Todavía no hay reportes publicados para este distrito.</p>'
+
+    if not barrios_html:
+        barrios_html = '<li><span>Sin barrios activos</span><strong>0</strong></li>'
+
+    if not categorias_html:
+        categorias_html = '<li><span>Sin categorías</span><strong>0</strong></li>'
 
     html_response = f"""
     <!DOCTYPE html>
@@ -968,19 +977,81 @@ def reportes_publicos(distrito_slug: str):
             }}
 
             h1 {{
-                margin: 8px 0 6px;
-                font-size: 38px;
+                margin: 8px 0 8px;
+                font-size: 42px;
                 color: #f1d571;
             }}
 
             .sub {{
-                margin: 0 0 28px;
+                margin: 0;
                 color: #f7e7b0;
+                font-size: 18px;
+            }}
+
+            .hero {{
+                background: linear-gradient(135deg, #650713, #48020c);
+                border: 1px solid #b98b31;
+                border-radius: 18px;
+                padding: 28px;
+                margin-bottom: 24px;
+            }}
+
+            .claim {{
+                margin-top: 22px;
+                background: rgba(18,18,18,.35);
+                border-left: 4px solid #f1d571;
+                padding: 16px 18px;
+                border-radius: 12px;
+            }}
+
+            .claim h2 {{
+                margin: 0 0 8px;
+                color: #ffffff;
+                font-size: 24px;
+            }}
+
+            .claim p {{
+                margin: 0;
+                color: #f1d571;
+                font-size: 18px;
+                font-weight: 700;
+            }}
+
+            .stats {{
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 14px;
+                margin: 24px 0;
+            }}
+
+            .stat {{
+                background: #650713;
+                border: 1px solid #b98b31;
+                border-radius: 12px;
+                padding: 18px;
+            }}
+
+            .stat span {{
+                display: block;
+                font-size: 13px;
+                color: #f1d571;
+                margin-bottom: 8px;
+            }}
+
+            .stat strong {{
+                font-size: 28px;
+            }}
+
+            .grid {{
+                display: grid;
+                grid-template-columns: 1fr 320px;
+                gap: 20px;
+                align-items: start;
             }}
 
             .cards {{
                 display: grid;
-                grid-template-columns: repeat(3, 1fr);
+                grid-template-columns: repeat(2, 1fr);
                 gap: 16px;
             }}
 
@@ -994,7 +1065,7 @@ def reportes_publicos(distrito_slug: str):
 
             .thumb {{
                 width: 100%;
-                height: 180px;
+                height: 210px;
                 background: #240106;
             }}
 
@@ -1035,12 +1106,75 @@ def reportes_publicos(distrito_slug: str):
                 font-weight: 700;
             }}
 
+            .side {{
+                display: grid;
+                gap: 16px;
+            }}
+
+            .box {{
+                background: #650713;
+                border: 1px solid #b98b31;
+                border-radius: 14px;
+                padding: 18px;
+            }}
+
+            .box h2 {{
+                margin-top: 0;
+                color: #f1d571;
+                font-size: 22px;
+            }}
+
+            .box ul {{
+                list-style: none;
+                padding: 0;
+                margin: 0;
+            }}
+
+            .box li {{
+                display: flex;
+                justify-content: space-between;
+                padding: 10px 0;
+                border-bottom: 1px solid rgba(241,213,113,.25);
+            }}
+
+            .box li:last-child {{
+                border-bottom: 0;
+            }}
+
+            .cta {{
+                margin-top: 24px;
+                background: #650713;
+                border: 1px solid #b98b31;
+                border-radius: 14px;
+                padding: 20px;
+                text-align: center;
+            }}
+
+            .cta a {{
+                display: inline-block;
+                margin-top: 10px;
+                color: #121212;
+                background: #f1d571;
+                padding: 12px 18px;
+                border-radius: 8px;
+                font-weight: 700;
+                text-decoration: none;
+            }}
+
             .vacio {{
                 color: #f1d571;
                 font-weight: 700;
             }}
 
             @media (max-width: 850px) {{
+                .stats {{
+                    grid-template-columns: 1fr;
+                }}
+
+                .grid {{
+                    grid-template-columns: 1fr;
+                }}
+
                 .cards {{
                     grid-template-columns: 1fr;
                 }}
@@ -1053,14 +1187,61 @@ def reportes_publicos(distrito_slug: str):
     </head>
     <body>
         <main class="wrap">
-            <section>
+            <section class="hero">
                 <div class="eyebrow">Mapa de Barrio</div>
                 <h1>Reportes de {html.escape(ciudad)}</h1>
-                <p class="sub">Problemas publicados y verificados por referentes territoriales.</p>
+                <p class="sub">Problemas reales informados por vecinos y publicados por referentes territoriales.</p>
+
+                <div class="claim">
+                    <h2>Escucha activa las 24 horas</h2>
+                    <p>La política del siglo XXI no toca timbres. Escucha, mide y resuelve.</p>
+                </div>
             </section>
 
-            <section class="cards">
-                {cards_html}
+            <section class="stats">
+                <div class="stat">
+                    <span>Reportes publicados</span>
+                    <strong>{reportes_publicados}</strong>
+                </div>
+                <div class="stat">
+                    <span>Barrios activos</span>
+                    <strong>{barrios_activos}</strong>
+                </div>
+                <div class="stat">
+                    <span>Categorías detectadas</span>
+                    <strong>{categorias_detectadas}</strong>
+                </div>
+            </section>
+
+            <section class="grid">
+                <div>
+                    <h2>Últimos reportes publicados</h2>
+                    <div class="cards">
+                        {cards_html}
+                    </div>
+                </div>
+
+                <aside class="side">
+                    <div class="box">
+                        <h2>Barrios</h2>
+                        <ul>
+                            {barrios_html}
+                        </ul>
+                    </div>
+
+                    <div class="box">
+                        <h2>Categorías</h2>
+                        <ul>
+                            {categorias_html}
+                        </ul>
+                    </div>
+                </aside>
+            </section>
+
+            <section class="cta">
+                <strong>¿Detectaste un problema en tu barrio?</strong>
+                <br>
+                <a href="https://provincialibertaria.com/reporta-tu-barrio/">Informar incidente</a>
             </section>
         </main>
     </body>
