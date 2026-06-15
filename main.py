@@ -42,6 +42,7 @@ class Incidente(BaseModel):
     ciudad: str
     barrio: str
     categoria: str
+    categoria_detalle: Optional[str] = None
     descripcion: str
     direccion: Optional[str] = None
     foto_url: Optional[str] = None
@@ -61,6 +62,7 @@ class IncidenteFotoJSON(BaseModel):
     ciudad: str
     barrio: str
     categoria: str
+    categoria_detalle: Optional[str] = None
     descripcion: str
     direccion: Optional[str] = None
     foto: Optional[FotoBase64] = None
@@ -95,6 +97,15 @@ def normalizar_direccion(valor: Optional[str]) -> Optional[str]:
     return limpio if limpio else None
 
 
+def normalizar_numero(valor):
+    if valor in (None, ""):
+        return None
+    try:
+        return float(str(valor).replace(",", "."))
+    except ValueError:
+        return None
+
+
 def ciudad_desde_slug(slug: str) -> str:
     mapa = {
         "berisso": "Berisso",
@@ -125,6 +136,7 @@ def insertar_incidente(
     barrio,
     categoria,
     descripcion,
+    categoria_detalle=None,
     direccion=None,
     foto_url=None,
     estado="pendiente",
@@ -136,6 +148,7 @@ def insertar_incidente(
     ciudad = normalizar_texto(ciudad)
     barrio = normalizar_texto(barrio)
     categoria = normalizar_texto(categoria)
+    categoria_detalle = normalizar_direccion(categoria_detalle)
     direccion = normalizar_direccion(direccion)
 
     conn = db_conn()
@@ -143,13 +156,14 @@ def insertar_incidente(
 
     cur.execute("""
         INSERT INTO incidentes
-        (ciudad, barrio, categoria, descripcion, direccion, foto_url, estado, origen, fuente, latitud, longitud)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        (ciudad, barrio, categoria, categoria_detalle, descripcion, direccion, foto_url, estado, origen, fuente, latitud, longitud)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id;
     """, (
         ciudad,
         barrio,
         categoria,
+        categoria_detalle,
         descripcion,
         direccion,
         foto_url,
@@ -191,6 +205,30 @@ def actualizar_estado_incidentes(ids: List[int], estado: str):
     conn.close()
 
     return afectados
+
+
+def procesar_foto_upload(foto: UploadFile) -> Optional[str]:
+    if not foto or not foto.filename:
+        return None
+
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+    if foto.content_type not in ["image/jpeg", "image/png", "image/webp"]:
+        raise HTTPException(status_code=400, detail="Formato de imagen no permitido")
+
+    filename = f"{uuid.uuid4().hex}.webp"
+    file_path = os.path.join(UPLOAD_DIR, filename)
+
+    try:
+        image = Image.open(foto.file)
+        image = image.convert("RGB")
+        image.thumbnail((800, 800))
+        image.save(file_path, "WEBP", quality=55, method=6, optimize=True)
+
+        return f"{PUBLIC_UPLOAD_BASE}/{filename}"
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"No se pudo procesar la imagen: {str(e)}")
 
 
 def procesar_foto_base64(foto: FotoBase64) -> Optional[str]:
@@ -268,6 +306,7 @@ def crear_incidente(incidente: Incidente):
             barrio=incidente.barrio,
             categoria=incidente.categoria,
             descripcion=incidente.descripcion,
+            categoria_detalle=incidente.categoria_detalle,
             direccion=incidente.direccion,
             foto_url=incidente.foto_url,
             estado=incidente.estado or "pendiente",
@@ -293,6 +332,7 @@ def crear_incidente_con_foto_json(incidente: IncidenteFotoJSON):
             barrio=incidente.barrio,
             categoria=incidente.categoria,
             descripcion=incidente.descripcion,
+            categoria_detalle=incidente.categoria_detalle,
             direccion=incidente.direccion,
             foto_url=foto_url,
             estado=incidente.estado or "pendiente",
@@ -319,6 +359,348 @@ def cambiar_estado_lote(
 ):
     actualizar_estado_incidentes(ids, estado)
     return RedirectResponse(url=volver, status_code=303)
+
+
+@app.get("/incidentes/editar/{incidente_id}", response_class=HTMLResponse)
+def editar_incidente_form(incidente_id: int):
+    conn = db_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, ciudad, barrio, categoria, categoria_detalle, descripcion, direccion,
+               foto_url, estado, latitud, longitud, fecha_reporte
+        FROM incidentes
+        WHERE id = %s;
+    """, (incidente_id,))
+
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Incidente no encontrado")
+
+    (
+        id_incidente,
+        ciudad,
+        barrio,
+        categoria,
+        categoria_detalle,
+        descripcion,
+        direccion,
+        foto_url,
+        estado,
+        latitud,
+        longitud,
+        fecha_reporte,
+    ) = row
+
+    fecha_value = fecha_reporte.strftime("%Y-%m-%dT%H:%M") if fecha_reporte else ""
+
+    foto_html = ""
+    if foto_url:
+        nombre_foto = foto_url.split("/")[-1]
+        foto_html = f"""
+        <div class="foto-actual">
+            <p><strong>Foto actual</strong></p>
+            <img src="/foto/{html.escape(nombre_foto)}" alt="Foto actual">
+            <label class="checkline">
+                <input type="checkbox" name="quitar_foto" value="1">
+                Quitar foto actual
+            </label>
+        </div>
+        """
+
+    def selected(valor):
+        return "selected" if (estado or "") == valor else ""
+
+    html_response = f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Editar reporte #{id_incidente}</title>
+        <style>
+            body {{
+                margin: 0;
+                font-family: Arial, sans-serif;
+                background: #48020c;
+                color: #ffffff;
+            }}
+
+            .wrap {{
+                max-width: 760px;
+                margin: 0 auto;
+                padding: 32px 18px;
+            }}
+
+            .box {{
+                background: #650713;
+                border: 1px solid #b98b31;
+                border-radius: 16px;
+                padding: 22px;
+            }}
+
+            h1 {{
+                color: #f1d571;
+                margin: 0 0 18px;
+            }}
+
+            label {{
+                display: block;
+                color: #f1d571;
+                font-weight: 700;
+                margin: 14px 0 6px;
+            }}
+
+            input, select, textarea {{
+                width: 100%;
+                padding: 12px 14px;
+                border: 2px solid #b98b31;
+                border-radius: 6px;
+                background: #ffffff;
+                color: #121212;
+                box-sizing: border-box;
+                font-size: 15px;
+            }}
+
+            textarea {{
+                min-height: 150px;
+            }}
+
+            .row {{
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 12px;
+            }}
+
+            .actions {{
+                display: flex;
+                gap: 10px;
+                flex-wrap: wrap;
+                margin-top: 20px;
+            }}
+
+            button, .volver {{
+                border: 0;
+                border-radius: 8px;
+                padding: 12px 16px;
+                font-weight: 700;
+                cursor: pointer;
+                text-decoration: none;
+            }}
+
+            button {{
+                background: #f1d571;
+                color: #121212;
+            }}
+
+            .volver {{
+                background: #121212;
+                color: #ffffff;
+            }}
+
+            .foto-actual {{
+                margin-top: 16px;
+                background: rgba(18,18,18,.35);
+                border: 1px solid rgba(241,213,113,.45);
+                border-radius: 12px;
+                padding: 14px;
+            }}
+
+            .foto-actual img {{
+                width: 100%;
+                max-height: 260px;
+                object-fit: cover;
+                border-radius: 10px;
+                display: block;
+                margin-bottom: 10px;
+            }}
+
+            .checkline {{
+                color: #ffffff;
+                font-weight: 700;
+            }}
+
+            .checkline input {{
+                width: auto;
+                margin-right: 6px;
+            }}
+
+            @media (max-width: 720px) {{
+                .row {{
+                    grid-template-columns: 1fr;
+                }}
+            }}
+        </style>
+    </head>
+    <body>
+        <main class="wrap">
+            <div class="box">
+                <h1>Editar reporte #{id_incidente}</h1>
+
+                <form method="post" action="/incidentes/editar/{id_incidente}" enctype="multipart/form-data">
+                    <div class="row">
+                        <div>
+                            <label>Ciudad</label>
+                            <input name="ciudad" value="{html.escape(ciudad or '')}" required>
+                        </div>
+                        <div>
+                            <label>Barrio / zona</label>
+                            <input name="barrio" value="{html.escape(barrio or '')}" required>
+                        </div>
+                    </div>
+
+                    <label>Dirección o referencia</label>
+                    <input name="direccion" value="{html.escape(direccion or '')}">
+
+                    <div class="row">
+                        <div>
+                            <label>Categoría</label>
+                            <input name="categoria" value="{html.escape(categoria or '')}" required>
+                        </div>
+                        <div>
+                            <label>Detalle de categoría</label>
+                            <input name="categoria_detalle" value="{html.escape(categoria_detalle or '')}">
+                        </div>
+                    </div>
+
+                    <label>Descripción</label>
+                    <textarea name="descripcion" required>{html.escape(descripcion or '')}</textarea>
+
+                    <div class="row">
+                        <div>
+                            <label>Estado</label>
+                            <select name="estado">
+                                <option value="pendiente" {selected('pendiente')}>pendiente</option>
+                                <option value="publicado" {selected('publicado')}>publicado</option>
+                                <option value="resuelto" {selected('resuelto')}>resuelto</option>
+                                <option value="oculto" {selected('oculto')}>oculto</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>Fecha del reporte</label>
+                            <input type="datetime-local" name="fecha_reporte" value="{html.escape(fecha_value)}">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div>
+                            <label>Latitud</label>
+                            <input name="latitud" value="{html.escape(str(latitud) if latitud is not None else '')}">
+                        </div>
+                        <div>
+                            <label>Longitud</label>
+                            <input name="longitud" value="{html.escape(str(longitud) if longitud is not None else '')}">
+                        </div>
+                    </div>
+
+                    {foto_html}
+
+                    <label>Subir nueva foto</label>
+                    <input type="file" name="foto_nueva" accept="image/jpeg,image/png,image/webp">
+
+                    <div class="actions">
+                        <button type="submit">Guardar cambios</button>
+                        <a class="volver" href="/territorio/{html.escape((ciudad or 'berisso').lower().replace(' ', '-'))}?estado=todos">Volver al panel</a>
+                    </div>
+                </form>
+            </div>
+        </main>
+    </body>
+    </html>
+    """
+
+    return HTMLResponse(content=html_response)
+
+
+@app.post("/incidentes/editar/{incidente_id}")
+def editar_incidente_guardar(
+    incidente_id: int,
+    ciudad: str = Form(...),
+    barrio: str = Form(...),
+    direccion: str = Form(""),
+    categoria: str = Form(...),
+    categoria_detalle: str = Form(""),
+    descripcion: str = Form(...),
+    estado: str = Form("pendiente"),
+    fecha_reporte: str = Form(""),
+    latitud: str = Form(""),
+    longitud: str = Form(""),
+    quitar_foto: Optional[str] = Form(None),
+    foto_nueva: Optional[UploadFile] = File(None),
+):
+    if estado not in ESTADOS_VALIDOS:
+        raise HTTPException(status_code=400, detail="Estado inválido")
+
+    ciudad_norm = normalizar_texto(ciudad)
+    barrio_norm = normalizar_texto(barrio)
+    categoria_norm = normalizar_texto(categoria)
+    categoria_detalle_norm = normalizar_direccion(categoria_detalle)
+    direccion_norm = normalizar_direccion(direccion)
+    latitud_val = normalizar_numero(latitud)
+    longitud_val = normalizar_numero(longitud)
+    fecha_val = fecha_reporte if fecha_reporte else None
+
+    conn = db_conn()
+    cur = conn.cursor()
+
+    cur.execute("SELECT foto_url FROM incidentes WHERE id = %s;", (incidente_id,))
+    row = cur.fetchone()
+
+    if not row:
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=404, detail="Incidente no encontrado")
+
+    foto_url = row[0]
+
+    if quitar_foto:
+        foto_url = None
+
+    if foto_nueva and foto_nueva.filename:
+        foto_url = procesar_foto_upload(foto_nueva)
+
+    cur.execute("""
+        UPDATE incidentes
+        SET ciudad = %s,
+            barrio = %s,
+            categoria = %s,
+            categoria_detalle = %s,
+            descripcion = %s,
+            direccion = %s,
+            foto_url = %s,
+            estado = %s,
+            latitud = %s,
+            longitud = %s,
+            fecha_reporte = COALESCE(%s::timestamp, fecha_reporte),
+            fecha_actualizacion = NOW()
+        WHERE id = %s;
+    """, (
+        ciudad_norm,
+        barrio_norm,
+        categoria_norm,
+        categoria_detalle_norm,
+        descripcion,
+        direccion_norm,
+        foto_url,
+        estado,
+        latitud_val,
+        longitud_val,
+        fecha_val,
+        incidente_id,
+    ))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return RedirectResponse(
+        url=f"/territorio/{ciudad_norm.lower().replace(' ', '-')}?estado=todos",
+        status_code=303
+    )
+
 
 
 @app.get("/panel/berisso")
@@ -369,7 +751,7 @@ def panel_distrito(distrito_slug: str, estado: str = "pendiente"):
 
     if estado == "todos":
         cur.execute("""
-            SELECT id, barrio, categoria, descripcion, direccion, foto_url, fecha_reporte, estado
+            SELECT id, barrio, categoria, categoria_detalle, descripcion, direccion, foto_url, fecha_reporte, estado
             FROM incidentes
             WHERE LOWER(ciudad) = LOWER(%s)
             ORDER BY fecha_reporte DESC
@@ -377,7 +759,7 @@ def panel_distrito(distrito_slug: str, estado: str = "pendiente"):
         """, (ciudad,))
     else:
         cur.execute("""
-            SELECT id, barrio, categoria, descripcion, direccion, foto_url, fecha_reporte, estado
+            SELECT id, barrio, categoria, categoria_detalle, descripcion, direccion, foto_url, fecha_reporte, estado
             FROM incidentes
             WHERE LOWER(ciudad) = LOWER(%s)
               AND estado = %s
@@ -413,14 +795,16 @@ def panel_distrito(distrito_slug: str, estado: str = "pendiente"):
     cards_html = ""
 
     for item in incidentes:
-        id_incidente, barrio, categoria, descripcion, direccion, foto_url, fecha, estado_actual = item
+        id_incidente, barrio, categoria, categoria_detalle, descripcion, direccion, foto_url, fecha, estado_actual = item
 
         barrio_safe = html.escape(barrio or "")
         categoria_safe = html.escape(categoria or "")
+        categoria_detalle_safe = html.escape(categoria_detalle or "")
         descripcion_safe = html.escape(descripcion or "")
         direccion_safe = html.escape(direccion or "")
         estado_safe = html.escape(estado_actual or "")
 
+        categoria_detalle_html = f'<p class="direccion">🏷️ {categoria_detalle_safe}</p>' if categoria_detalle_safe else ""
         direccion_html = f'<p class="direccion">🧭 {direccion_safe}</p>' if direccion_safe else ""
 
         if foto_url:
@@ -442,9 +826,11 @@ def panel_distrito(distrito_slug: str, estado: str = "pendiente"):
                 <div class="meta">#{id_incidente} · {fecha.strftime('%d/%m/%Y %H:%M')}</div>
                 <div class="estado estado-{estado_safe}">{estado_safe}</div>
                 <h3>{categoria_safe}</h3>
+                {categoria_detalle_html}
                 <p class="barrio">📍 {barrio_safe}</p>
                 {direccion_html}
                 <p>{descripcion_safe}</p>
+                <p><a class="edit-link" href="/incidentes/editar/{id_incidente}">Editar</a></p>
             </div>
         </article>
         """
@@ -922,9 +1308,11 @@ def reportes_publicos(distrito_slug: str):
 
         barrio_safe = html.escape(barrio or "")
         categoria_safe = html.escape(categoria or "")
+        categoria_detalle_safe = html.escape(categoria_detalle or "")
         descripcion_safe = html.escape(descripcion or "")
         direccion_safe = html.escape(direccion or "")
 
+        categoria_detalle_html = f'<p class="direccion">🏷️ {categoria_detalle_safe}</p>' if categoria_detalle_safe else ""
         direccion_html = f'<p class="direccion">🧭 {direccion_safe}</p>' if direccion_safe else ""
 
         if foto_url:
@@ -939,6 +1327,7 @@ def reportes_publicos(distrito_slug: str):
             <div class="contenido">
                 <div class="meta">#{id_incidente} · {fecha.strftime('%d/%m/%Y %H:%M')}</div>
                 <h3>{categoria_safe}</h3>
+                {categoria_detalle_html}
                 <p class="barrio">📍 {barrio_safe}</p>
                 {direccion_html}
                 <p>{descripcion_safe}</p>
