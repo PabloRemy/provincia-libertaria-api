@@ -1286,7 +1286,7 @@ def reportes_publicos(distrito_slug: str):
     categorias = cur.fetchall()
 
     cur.execute("""
-        SELECT id, barrio, categoria, descripcion, direccion, foto_url, fecha_reporte
+        SELECT id, barrio, categoria, categoria_detalle, descripcion, direccion, foto_url, fecha_reporte
         FROM incidentes
         WHERE LOWER(ciudad) = LOWER(%s)
           AND estado = 'publicado'
@@ -1304,7 +1304,7 @@ def reportes_publicos(distrito_slug: str):
     cards_html = ""
 
     for item in incidentes:
-        id_incidente, barrio, categoria, descripcion, direccion, foto_url, fecha = item
+        id_incidente, barrio, categoria, categoria_detalle, descripcion, direccion, foto_url, fecha = item
 
         barrio_safe = html.escape(barrio or "")
         categoria_safe = html.escape(categoria or "")
