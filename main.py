@@ -3,12 +3,14 @@ import uuid
 import base64
 import json
 import html
+import secrets
 from io import BytesIO
 from typing import Optional, List
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request, Depends, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel
 from PIL import Image
 import psycopg2
@@ -26,6 +28,116 @@ UPLOAD_DIR = "/data/uploads/incidentes"
 PUBLIC_UPLOAD_BASE = "/uploads/incidentes"
 
 ESTADOS_VALIDOS = ["pendiente", "publicado", "resuelto", "oculto"]
+
+security = HTTPBasic()
+
+DISTRITOS_TERCERA = [
+    ("berisso", "Berisso"),
+    ("ensenada", "Ensenada"),
+    ("la-plata", "La Plata"),
+]
+
+def parse_admin_users():
+    raw = os.getenv("ADMIN_USERS", "")
+    users = {}
+
+    for item in raw.split(","):
+        item = item.strip()
+        if not item:
+            continue
+
+        parts = item.split(":")
+        if len(parts) != 3:
+            continue
+
+        username, password, scope = parts
+        users[username.strip()] = {
+            "password": password.strip(),
+            "scope": scope.strip()
+        }
+
+    return users
+
+
+def get_current_admin(credentials: HTTPBasicCredentials = Depends(security)):
+    users = parse_admin_users()
+
+    if not users:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="ADMIN_USERS no configurado"
+        )
+
+    user_data = users.get(credentials.username)
+
+    valid_user = user_data is not None
+    valid_password = (
+        valid_user and
+        secrets.compare_digest(credentials.password, user_data["password"])
+    )
+
+    if not valid_user or not valid_password:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Usuario o contraseña inválidos",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
+    return {
+        "username": credentials.username,
+        "scope": user_data["scope"]
+    }
+
+
+def puede_ver_distrito(admin, distrito_slug: str) -> bool:
+    scope = admin.get("scope")
+
+    if scope == "todos":
+        return True
+
+    if scope == "tercera-seccion":
+        return distrito_slug in [slug for slug, _ in DISTRITOS_TERCERA]
+
+    return scope == distrito_slug
+
+
+def requiere_distrito(distrito_slug: str, admin):
+    if not puede_ver_distrito(admin, distrito_slug):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tenés permiso para ver este distrito"
+        )
+
+
+def slug_desde_ciudad(ciudad: Optional[str]) -> str:
+    if not ciudad:
+        return "berisso"
+
+    ciudad_norm = normalizar_texto(ciudad) or ""
+
+    mapa = {
+        "Berisso": "berisso",
+        "Ensenada": "ensenada",
+        "La Plata": "la-plata",
+        "Punta Indio": "punta-indio",
+        "Magdalena": "magdalena",
+        "Quilmes": "quilmes",
+        "Avellaneda": "avellaneda",
+        "Lanús": "lanus",
+        "Lomas De Zamora": "lomas-de-zamora",
+        "Almirante Brown": "almirante-brown",
+        "Florencio Varela": "florencio-varela",
+        "Berazategui": "berazategui",
+        "Esteban Echeverría": "esteban-echeverria",
+        "Ezeiza": "ezeiza",
+        "Cañuelas": "canuelas",
+        "San Vicente": "san-vicente",
+        "Presidente Perón": "presidente-peron",
+        "La Matanza": "la-matanza",
+    }
+
+    return mapa.get(ciudad_norm, ciudad_norm.lower().replace(" ", "-"))
+
 
 
 class Registro(BaseModel):
@@ -355,14 +467,19 @@ def crear_incidente_con_foto_json(incidente: IncidenteFotoJSON):
 def cambiar_estado_lote(
     ids: List[int] = Form(default=[]),
     estado: str = Form(...),
-    volver: str = Form("/territorio/berisso")
+    volver: str = Form("/territorio/berisso"),
+    admin = Depends(get_current_admin)
 ):
+    if "/territorio/" in volver:
+        distrito_slug = volver.split("/territorio/")[-1].split("?")[0].strip("/")
+        requiere_distrito(distrito_slug, admin)
+
     actualizar_estado_incidentes(ids, estado)
     return RedirectResponse(url=volver, status_code=303)
 
 
 @app.get("/incidentes/editar/{incidente_id}", response_class=HTMLResponse)
-def editar_incidente_form(incidente_id: int):
+def editar_incidente_form(incidente_id: int, admin = Depends(get_current_admin)):
     conn = db_conn()
     cur = conn.cursor()
 
@@ -394,6 +511,8 @@ def editar_incidente_form(incidente_id: int):
         longitud,
         fecha_reporte,
     ) = row
+
+    requiere_distrito(slug_desde_ciudad(ciudad), admin)
 
     fecha_value = fecha_reporte.strftime("%Y-%m-%dT%H:%M") if fecha_reporte else ""
 
@@ -630,6 +749,7 @@ def editar_incidente_guardar(
     longitud: str = Form(""),
     quitar_foto: Optional[str] = Form(None),
     foto_nueva: Optional[UploadFile] = File(None),
+    admin = Depends(get_current_admin),
 ):
     if estado not in ESTADOS_VALIDOS:
         raise HTTPException(status_code=400, detail="Estado inválido")
@@ -655,6 +775,11 @@ def editar_incidente_guardar(
         raise HTTPException(status_code=404, detail="Incidente no encontrado")
 
     foto_url = row[0]
+
+    cur.execute("SELECT ciudad FROM incidentes WHERE id = %s;", (incidente_id,))
+    ciudad_original = cur.fetchone()[0]
+    requiere_distrito(slug_desde_ciudad(ciudad_original), admin)
+    requiere_distrito(slug_desde_ciudad(ciudad_norm), admin)
 
     if quitar_foto:
         foto_url = None
@@ -703,13 +828,413 @@ def editar_incidente_guardar(
 
 
 
+
+@app.get("/tercera-seccion", response_class=HTMLResponse)
+def panel_tercera_seccion(admin = Depends(get_current_admin)):
+    if admin.get("scope") not in ["todos", "tercera-seccion"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tenés permiso para ver la Tercera Sección"
+        )
+
+    conn = db_conn()
+    cur = conn.cursor()
+
+    distritos_data = []
+    total_pendientes = 0
+    total_publicados = 0
+    total_resueltos = 0
+    total_ocultos = 0
+
+    for slug, ciudad in DISTRITOS_TERCERA:
+        cur.execute("""
+            SELECT estado, COUNT(*)
+            FROM incidentes
+            WHERE LOWER(ciudad) = LOWER(%s)
+            GROUP BY estado;
+        """, (ciudad,))
+        estados_data = dict(cur.fetchall())
+
+        pendientes = estados_data.get("pendiente", 0)
+        publicados = estados_data.get("publicado", 0)
+        resueltos = estados_data.get("resuelto", 0)
+        ocultos = estados_data.get("oculto", 0)
+
+        cur.execute("""
+            SELECT COUNT(*)
+            FROM (
+                SELECT INITCAP(LOWER(TRIM(barrio))) AS barrio_normalizado
+                FROM incidentes
+                WHERE LOWER(ciudad) = LOWER(%s)
+                GROUP BY barrio_normalizado
+            ) barrios;
+        """, (ciudad,))
+        barrios_activos = cur.fetchone()[0]
+
+        cur.execute("""
+            SELECT categoria, COUNT(*) AS total
+            FROM incidentes
+            WHERE LOWER(ciudad) = LOWER(%s)
+            GROUP BY categoria
+            ORDER BY total DESC
+            LIMIT 4;
+        """, (ciudad,))
+        categorias_top = cur.fetchall()
+
+        distritos_data.append({
+            "slug": slug,
+            "ciudad": ciudad,
+            "pendientes": pendientes,
+            "publicados": publicados,
+            "resueltos": resueltos,
+            "ocultos": ocultos,
+            "barrios_activos": barrios_activos,
+            "categorias_top": categorias_top,
+        })
+
+        total_pendientes += pendientes
+        total_publicados += publicados
+        total_resueltos += resueltos
+        total_ocultos += ocultos
+
+    cur.execute("""
+        SELECT id, ciudad, barrio, categoria, descripcion, direccion, estado, fecha_reporte
+        FROM incidentes
+        WHERE LOWER(ciudad) IN ('berisso', 'ensenada', 'la plata')
+        ORDER BY fecha_reporte DESC
+        LIMIT 12;
+    """)
+    ultimos = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    cards_html = ""
+
+    for d in distritos_data:
+        categorias_html = ""
+
+        if d["categorias_top"]:
+            for categoria, total in d["categorias_top"]:
+                categorias_html += f"<li><span>{html.escape(categoria or 'Sin categoría')}</span><strong>{total}</strong></li>"
+        else:
+            categorias_html = "<li><span>Sin datos</span><strong>0</strong></li>"
+
+        cards_html += f"""
+        <article class="district-card">
+            <div class="district-head">
+                <h2>{html.escape(d['ciudad'])}</h2>
+                <span>{d['barrios_activos']} barrios activos</span>
+            </div>
+
+            <div class="mini-stats">
+                <div><span>Pendientes</span><strong>{d['pendientes']}</strong></div>
+                <div><span>Publicados</span><strong>{d['publicados']}</strong></div>
+                <div><span>Resueltos</span><strong>{d['resueltos']}</strong></div>
+                <div><span>Ocultos</span><strong>{d['ocultos']}</strong></div>
+            </div>
+
+            <div class="box-small">
+                <h3>Categorías principales</h3>
+                <ul>{categorias_html}</ul>
+            </div>
+
+            <div class="actions">
+                <a href="/territorio/{html.escape(d['slug'])}">Administrar</a>
+                <a href="/reportes/{html.escape(d['slug'])}">Ver público</a>
+            </div>
+        </article>
+        """
+
+    ultimos_html = ""
+
+    if ultimos:
+        for item in ultimos:
+            id_incidente, ciudad, barrio, categoria, descripcion, direccion, estado_actual, fecha = item
+            ciudad_safe = html.escape(ciudad or "")
+            barrio_safe = html.escape(barrio or "")
+            categoria_safe = html.escape(categoria or "")
+            estado_safe = html.escape(estado_actual or "")
+            fecha_safe = fecha.strftime('%d/%m/%Y %H:%M') if fecha else ""
+
+            ultimos_html += f"""
+            <li>
+                <strong>#{id_incidente} · {ciudad_safe}</strong>
+                <span>{categoria_safe} · {barrio_safe} · {estado_safe} · {fecha_safe}</span>
+            </li>
+            """
+    else:
+        ultimos_html = "<li><strong>Sin reportes</strong><span>Todavía no hay reportes cargados.</span></li>"
+
+    html_response = f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Tercera Sección - Provincia Libertaria</title>
+        <style>
+            body {{
+                margin: 0;
+                font-family: Arial, sans-serif;
+                background: #48020c;
+                color: #ffffff;
+            }}
+
+            .wrap {{
+                max-width: 1180px;
+                margin: 0 auto;
+                padding: 32px 18px;
+            }}
+
+            .eyebrow {{
+                color: #f1d571;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: .08em;
+                font-size: 13px;
+            }}
+
+            h1 {{
+                margin: 8px 0 8px;
+                font-size: 42px;
+                color: #f1d571;
+            }}
+
+            .sub {{
+                margin: 0;
+                color: #f7e7b0;
+                font-size: 18px;
+            }}
+
+            .stats {{
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 14px;
+                margin: 26px 0;
+            }}
+
+            .stat {{
+                background: #650713;
+                border: 1px solid #b98b31;
+                border-radius: 12px;
+                padding: 18px;
+            }}
+
+            .stat span {{
+                display: block;
+                color: #f1d571;
+                font-size: 13px;
+                margin-bottom: 8px;
+            }}
+
+            .stat strong {{
+                font-size: 28px;
+            }}
+
+            .districts {{
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 16px;
+                margin: 26px 0;
+            }}
+
+            .district-card {{
+                background: #650713;
+                border: 1px solid #b98b31;
+                border-radius: 16px;
+                padding: 18px;
+            }}
+
+            .district-head {{
+                display: flex;
+                justify-content: space-between;
+                gap: 10px;
+                align-items: start;
+                margin-bottom: 14px;
+            }}
+
+            .district-head h2 {{
+                margin: 0;
+                color: #f1d571;
+            }}
+
+            .district-head span {{
+                color: #f7e7b0;
+                font-size: 13px;
+                font-weight: 700;
+            }}
+
+            .mini-stats {{
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+                margin-bottom: 14px;
+            }}
+
+            .mini-stats div {{
+                background: rgba(18,18,18,.32);
+                border-radius: 10px;
+                padding: 10px;
+            }}
+
+            .mini-stats span {{
+                display: block;
+                color: #f1d571;
+                font-size: 12px;
+            }}
+
+            .mini-stats strong {{
+                font-size: 22px;
+            }}
+
+            .box-small {{
+                background: rgba(18,18,18,.28);
+                border-radius: 12px;
+                padding: 12px;
+                margin-bottom: 14px;
+            }}
+
+            .box-small h3 {{
+                margin: 0 0 8px;
+                color: #f1d571;
+                font-size: 16px;
+            }}
+
+            ul {{
+                list-style: none;
+                padding: 0;
+                margin: 0;
+            }}
+
+            .box-small li {{
+                display: flex;
+                justify-content: space-between;
+                padding: 7px 0;
+                border-bottom: 1px solid rgba(241,213,113,.18);
+            }}
+
+            .box-small li:last-child {{
+                border-bottom: 0;
+            }}
+
+            .actions {{
+                display: flex;
+                gap: 10px;
+                flex-wrap: wrap;
+            }}
+
+            .actions a {{
+                display: inline-block;
+                background: #f1d571;
+                color: #121212;
+                padding: 10px 12px;
+                border-radius: 8px;
+                text-decoration: none;
+                font-weight: 700;
+            }}
+
+            .actions a:last-child {{
+                background: #121212;
+                color: #ffffff;
+                border: 1px solid #b98b31;
+            }}
+
+            .latest {{
+                background: #650713;
+                border: 1px solid #b98b31;
+                border-radius: 16px;
+                padding: 18px;
+                margin-top: 22px;
+            }}
+
+            .latest h2 {{
+                color: #f1d571;
+                margin-top: 0;
+            }}
+
+            .latest li {{
+                display: grid;
+                gap: 4px;
+                padding: 11px 0;
+                border-bottom: 1px solid rgba(241,213,113,.2);
+            }}
+
+            .latest li:last-child {{
+                border-bottom: 0;
+            }}
+
+            .latest span {{
+                color: #f7e7b0;
+            }}
+
+            @media (max-width: 900px) {{
+                .stats {{
+                    grid-template-columns: repeat(2, 1fr);
+                }}
+
+                .districts {{
+                    grid-template-columns: 1fr;
+                }}
+
+                h1 {{
+                    font-size: 32px;
+                }}
+            }}
+        </style>
+    </head>
+    <body>
+        <main class="wrap">
+            <section>
+                <div class="eyebrow">Panel general</div>
+                <h1>Tercera Sección</h1>
+                <p class="sub">Resumen territorial de Berisso, Ensenada y La Plata.</p>
+            </section>
+
+            <section class="stats">
+                <div class="stat"><span>Pendientes</span><strong>{total_pendientes}</strong></div>
+                <div class="stat"><span>Publicados</span><strong>{total_publicados}</strong></div>
+                <div class="stat"><span>Resueltos</span><strong>{total_resueltos}</strong></div>
+                <div class="stat"><span>Ocultos</span><strong>{total_ocultos}</strong></div>
+            </section>
+
+            <section class="districts">
+                {cards_html}
+            </section>
+
+            <section class="latest">
+                <h2>Últimos reportes de la sección</h2>
+                <ul>
+                    {ultimos_html}
+                </ul>
+            </section>
+        </main>
+    </body>
+    </html>
+    """
+
+    return HTMLResponse(content=html_response)
+
+
 @app.get("/panel/berisso")
 def redirigir_panel_berisso():
     return RedirectResponse(url="/territorio/berisso", status_code=301)
 
 
+@app.get("/panel/ensenada")
+def redirigir_panel_ensenada():
+    return RedirectResponse(url="/territorio/ensenada", status_code=301)
+
+
+@app.get("/panel/la-plata")
+def redirigir_panel_la_plata():
+    return RedirectResponse(url="/territorio/la-plata", status_code=301)
+
+
 @app.get("/territorio/{distrito_slug}", response_class=HTMLResponse)
-def panel_distrito(distrito_slug: str, estado: str = "pendiente"):
+def panel_distrito(distrito_slug: str, estado: str = "pendiente", admin = Depends(get_current_admin)):
+    requiere_distrito(distrito_slug, admin)
+
     ciudad = ciudad_desde_slug(distrito_slug)
 
     if estado not in ESTADOS_VALIDOS and estado != "todos":
@@ -1286,7 +1811,7 @@ def reportes_publicos(distrito_slug: str):
     categorias = cur.fetchall()
 
     cur.execute("""
-        SELECT id, barrio, categoria, categoria_detalle, descripcion, direccion, foto_url, fecha_reporte
+        SELECT id, barrio, categoria, descripcion, direccion, foto_url, fecha_reporte
         FROM incidentes
         WHERE LOWER(ciudad) = LOWER(%s)
           AND estado = 'publicado'
@@ -1304,7 +1829,7 @@ def reportes_publicos(distrito_slug: str):
     cards_html = ""
 
     for item in incidentes:
-        id_incidente, barrio, categoria, categoria_detalle, descripcion, direccion, foto_url, fecha = item
+        id_incidente, barrio, categoria, descripcion, direccion, foto_url, fecha = item
 
         barrio_safe = html.escape(barrio or "")
         categoria_safe = html.escape(categoria or "")
