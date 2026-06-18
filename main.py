@@ -732,7 +732,184 @@ def editar_incidente_form(incidente_id: int, admin = Depends(get_current_admin))
     """
 
     return HTMLResponse(content=html_response)
+    
+@app.get("/tablero", response_class=HTMLResponse)
+def tablero():
+    conn = db_conn()
+    cur = conn.cursor()
 
+    cur.execute("""
+        SELECT id, ciudad, barrio, categoria, descripcion, latitud, longitud, fecha_reporte
+        FROM incidentes
+        WHERE latitud IS NOT NULL
+          AND longitud IS NOT NULL
+          AND estado = 'publicado'
+        ORDER BY fecha_reporte DESC;
+    """)
+
+    puntos = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    puntos_js = []
+
+    for item in puntos:
+        id_incidente, ciudad, barrio, categoria, descripcion, latitud, longitud, fecha = item
+
+        puntos_js.append({
+            "id": id_incidente,
+            "ciudad": ciudad or "",
+            "barrio": barrio or "",
+            "categoria": categoria or "",
+            "descripcion": descripcion or "",
+            "latitud": float(latitud),
+            "longitud": float(longitud),
+            "fecha": fecha.strftime("%d/%m/%Y %H:%M") if fecha else ""
+        })
+
+    puntos_json = json.dumps(puntos_js, ensure_ascii=False)
+
+    html_response = f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Tablero Territorial - Provincia Libertaria</title>
+
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+        <style>
+            body {{
+                margin: 0;
+                font-family: Arial, sans-serif;
+                background: #48020c;
+                color: #ffffff;
+            }}
+
+            .wrap {{
+                max-width: 1180px;
+                margin: 0 auto;
+                padding: 28px 18px;
+            }}
+
+            .eyebrow {{
+                color: #f1d571;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: .08em;
+                font-size: 13px;
+            }}
+
+            h1 {{
+                margin: 8px 0 8px;
+                font-size: 40px;
+                color: #f1d571;
+            }}
+
+            .sub {{
+                margin: 0 0 20px;
+                color: #f7e7b0;
+                font-size: 18px;
+            }}
+
+            #map {{
+                height: 72vh;
+                min-height: 480px;
+                width: 100%;
+                border-radius: 18px;
+                border: 2px solid #b98b31;
+                overflow: hidden;
+                background: #121212;
+            }}
+
+            .panel {{
+                background: #650713;
+                border: 1px solid #b98b31;
+                border-radius: 16px;
+                padding: 18px;
+                margin-bottom: 18px;
+            }}
+
+            .counter {{
+                display: inline-block;
+                color: #121212;
+                background: #f1d571;
+                padding: 8px 12px;
+                border-radius: 999px;
+                font-weight: 700;
+                margin-top: 10px;
+            }}
+
+            .popup-title {{
+                font-weight: 700;
+                color: #9d1018;
+                font-size: 16px;
+                margin-bottom: 4px;
+            }}
+
+            .popup-meta {{
+                font-size: 13px;
+                color: #555;
+                margin-bottom: 6px;
+            }}
+
+            .popup-desc {{
+                font-size: 14px;
+                color: #121212;
+            }}
+        </style>
+    </head>
+    <body>
+        <main class="wrap">
+            <section class="panel">
+                <div class="eyebrow">Tablero territorial</div>
+                <h1>Mapa de reportes</h1>
+                <p class="sub">Primer tablero visual con reportes geolocalizados.</p>
+                <span class="counter">{len(puntos_js)} reportes con ubicación</span>
+            </section>
+
+            <div id="map"></div>
+        </main>
+
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+        <script>
+            const puntos = {puntos_json};
+
+            const map = L.map('map').setView([-34.9, -57.9], 11);
+
+            L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+                maxZoom: 19,
+                attribution: '&copy; OpenStreetMap'
+            }}).addTo(map);
+
+            const markers = [];
+
+            puntos.forEach(function(p) {{
+                const marker = L.marker([p.latitud, p.longitud]).addTo(map);
+
+                marker.bindPopup(`
+                    <div class="popup-title">${{p.categoria}}</div>
+                    <div class="popup-meta">#${{p.id}} · ${{p.ciudad}} · ${{p.barrio}}</div>
+                    <div class="popup-meta">${{p.fecha}}</div>
+                    <div class="popup-desc">${{p.descripcion}}</div>
+                `);
+
+                markers.push(marker);
+            }});
+
+            if (markers.length > 0) {{
+                const group = L.featureGroup(markers);
+                map.fitBounds(group.getBounds().pad(0.2));
+            }}
+        </script>
+    </body>
+    </html>
+    """
+
+    return HTMLResponse(content=html_response)
 
 @app.post("/incidentes/editar/{incidente_id}")
 def editar_incidente_guardar(
