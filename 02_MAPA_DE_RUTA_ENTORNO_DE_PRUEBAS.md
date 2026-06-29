@@ -63,7 +63,6 @@ Los entornos deben permanecer separados.
 
 ### Todavía no realizado
 
-- No existe un conjunto formal de datos ficticios iniciales.
 - No se probó la aplicación completa desde el navegador.
 - No se comparó la copia local con la versión actualmente desplegada en el VPS.
 - No existe todavía un procedimiento de publicación, respaldo y reversión.
@@ -137,7 +136,7 @@ pruebas continúan aprobando.
 
 Condición de finalización: la API responde localmente sin depender del VPS.
 
-### Etapa 3 — Datos ficticios reproducibles
+### Etapa 3 — Datos ficticios reproducibles (completada)
 
 1. Crear registros de ejemplo para Berisso, Ensenada y La Plata.
 2. Incluir categorías, barrios, estados y coordenadas representativas.
@@ -179,8 +178,8 @@ Condición de finalización: cambio desplegado, verificado y reversible.
 
 ## Próximo paso acordado
 
-Comenzar la Etapa 3: crear datos ficticios reproducibles para Berisso,
-Ensenada y La Plata, junto con usuarios administrativos de distintos alcances.
+Comenzar la Etapa 4: validar sistemáticamente formularios, autenticación,
+permisos, imágenes, paneles, mapas y moderación.
 
 ## Reglas de seguridad
 

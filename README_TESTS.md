@@ -30,6 +30,18 @@ http://127.0.0.1:8000
 http://127.0.0.1:8000/docs
 ```
 
+## Cargar datos ficticios
+
+Este comando elimina únicamente los datos de la base local `_test` y carga un
+escenario conocido con Berisso, Ensenada y La Plata:
+
+```bash
+sudo docker compose -f compose.test.yml --profile tools run --rm seed-test
+```
+
+Se crean nueve reportes y tres registros de reclutamiento completamente
+ficticios. Puede repetirse cuando se necesite recuperar el escenario inicial.
+
 La prueba crea las tablas necesarias, inserta un registro dentro de una
 transacción y hace `rollback`. Si `TEST_DATABASE_URL` no está definida, se
 omite. Si el nombre de base no termina en `_test`, falla antes de conectarse.

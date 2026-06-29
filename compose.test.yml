@@ -22,7 +22,7 @@ services:
       dockerfile: Dockerfile.test
     environment:
       DATABASE_URL: postgresql://provincia_test:provincia_test@postgres-test:5432/provincia_libertaria_test
-      ADMIN_USERS: admin-test:clave-test:todos
+      ADMIN_USERS: admin-test:clave-test:todos,armador-test:clave-test:tercera-seccion,berisso-test:clave-test:berisso,ensenada-test:clave-test:ensenada,laplata-test:clave-test:la-plata
       DATA_DIR: /data
     ports:
       - "127.0.0.1:8000:8000"
@@ -40,6 +40,24 @@ services:
       retries: 15
     volumes:
       - uploads-test-data:/data/uploads
+
+  seed-test:
+    image: postgres:16-alpine
+    profiles: ["tools"]
+    environment:
+      PGPASSWORD: provincia_test
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    command:
+      - psql
+      - --host=postgres-test
+      - --username=provincia_test
+      - --dbname=provincia_libertaria_test
+      - --file=/seed/test_seed.sql
+      - --set=ON_ERROR_STOP=1
+    volumes:
+      - ./sql:/seed:ro
 
 volumes:
   postgres-test-data:
