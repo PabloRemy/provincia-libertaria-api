@@ -30,6 +30,15 @@ http://127.0.0.1:8000
 http://127.0.0.1:8000/docs
 ```
 
+WordPress local queda disponible en:
+
+```text
+http://127.0.0.1:8080
+```
+
+WordPress usa una base MySQL local independiente. Sus datos, plugins y archivos
+se guardan en volúmenes Docker de pruebas.
+
 ## Cargar datos ficticios
 
 Este comando elimina únicamente los datos de la base local `_test` y carga un
@@ -46,13 +55,14 @@ La prueba crea las tablas necesarias, inserta un registro dentro de una
 transacción y hace `rollback`. Si `TEST_DATABASE_URL` no está definida, se
 omite. Si el nombre de base no termina en `_test`, falla antes de conectarse.
 
-Detener PostgreSQL conservando temporalmente sus datos:
+Detener el entorno conservando temporalmente sus datos:
 
 ```bash
 sudo docker compose -f compose.test.yml down
 ```
 
-Detenerlo y eliminar completamente la base descartable:
+Detener todo y eliminar completamente PostgreSQL, WordPress y sus archivos
+descartables:
 
 ```bash
 sudo docker compose -f compose.test.yml down -v

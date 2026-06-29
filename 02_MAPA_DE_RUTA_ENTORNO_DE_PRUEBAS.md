@@ -1,6 +1,6 @@
 # Mapa de ruta — Entorno de pruebas
 
-Última actualización: 28 de junio de 2026.
+Última actualización: 29 de junio de 2026.
 
 ## Instrucción para futuras sesiones de Codex
 
@@ -57,6 +57,10 @@ Los entornos deben permanecer separados.
 - Esquema descartable en `sql/test_schema.sql`.
 - Docker Engine y Docker Compose instalados en la computadora.
 - PostgreSQL 16 de pruebas definido en `compose.test.yml`.
+- WordPress 6.9.4 y MySQL 8.4 locales definidos en `compose.test.yml`.
+- WordPress local instalado en `http://127.0.0.1:8080`.
+- Plugins Contact Form 7 y CF7 to Webhook instalados y activados localmente.
+- Plantilla local del formulario guardada en `wordpress/`.
 - Puerto publicado sólo en `127.0.0.1:55432`.
 - Base `provincia_libertaria_test` protegida mediante sufijo `_test`.
 - Suite completa verificada: 25 pruebas aprobadas.
@@ -64,6 +68,7 @@ Los entornos deben permanecer separados.
 ### Todavía no realizado
 
 - No se probó la aplicación completa desde el navegador.
+- Falta crear y guardar el formulario CF7 local con la plantilla preparada.
 - No se comparó la copia local con la versión actualmente desplegada en el VPS.
 - No existe todavía un procedimiento de publicación, respaldo y reversión.
 
@@ -151,7 +156,8 @@ de prueba desde cero.
 1. Probar formularios de reclutamiento y reportes. En progreso: validado un
    reporte sin barrio, foto ni GPS mediante el endpoint usado por CF7.
    Sigue pendiente el formulario de reclutamiento y el envío desde un WordPress
-   local con CF7.
+   local con CF7. WordPress, Contact Form 7 y CF7 to Webhook ya están instalados;
+   falta configurar el formulario y ejecutar el envío.
 2. Probar autenticación y restricciones por distrito. Validado: un usuario de
    Berisso obtiene acceso a Berisso y rechazo `403` en Ensenada.
 3. Probar carga y visualización de imágenes. Validado: recepción Base64,
@@ -186,8 +192,19 @@ Condición de finalización: cambio desplegado, verificado y reversible.
 
 ## Próximo paso acordado
 
-Comenzar la Etapa 4: validar sistemáticamente formularios, autenticación,
-permisos, imágenes, paneles, mapas y moderación.
+Continuar la Etapa 4 desde WordPress local:
+
+1. Abrir `http://127.0.0.1:8080/wp-admin`.
+2. Crear `Reporte de barrio local` en Contact Form 7.
+3. Copiar el contenido de `wordpress/cf7-formulario-reporte.txt`.
+4. Configurar el webhook interno
+   `http://api-test:8000/incidente-foto-json`.
+5. Agregar `skip_mail: on` en Ajustes adicionales.
+6. Guardar, crear una página local con el shortcode y enviar un reporte sin
+   barrio ni foto.
+
+No agregar todavía el JavaScript productivo de redirecciones porque dirige al
+sitio público.
 
 ## Reglas de seguridad
 

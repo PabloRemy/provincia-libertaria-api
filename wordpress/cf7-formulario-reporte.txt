@@ -1,0 +1,76 @@
+<style>
+.pl-form{max-width:680px;margin:0 auto}
+.pl-form p{margin:0!important;padding:0!important}
+.pl-form label{display:block;color:#f1d571;font-weight:700;margin:0 0 10px}
+.pl-form .wpcf7-form-control-wrap{display:block;margin:4px 0 14px}
+.pl-form input,.pl-form select,.pl-form textarea{
+width:100%;
+padding:12px 14px;
+border:2px solid #b98b31;
+border-radius:4px;
+background:#fff;
+color:#121212;
+box-sizing:border-box;
+}
+.pl-form input[type=file]{background:#fff;padding:10px}
+.pl-form textarea{height:130px}
+.pl-submit-wrap{text-align:center;margin-top:10px}
+.pl-submit{
+background:transparent!important;
+color:#f1d571!important;
+border:2px solid #b98b31!important;
+padding:14px 30px!important;
+border-radius:4px!important;
+font-weight:700!important;
+cursor:pointer;
+}
+.pl-submit:hover{background:#b98b31!important;color:#121212!important}
+.wpcf7-not-valid-tip{
+display:block!important;
+color:#ffdddd!important;
+background:#9d1018!important;
+border:1px solid #f1d571!important;
+padding:8px 10px!important;
+margin-top:6px!important;
+border-radius:4px!important;
+font-weight:700!important;
+}
+</style>
+
+<div class="pl-form">
+
+[hidden latitud id:pl-latitud]
+[hidden longitud id:pl-longitud]
+
+<label>Ciudad
+[select* ciudad include_blank "Berisso" "Ensenada" "La Plata" "Magdalena" "Punta Indio" "Otra"]
+</label>
+
+<label>Barrio / zona (opcional)
+[text barrio placeholder "Ej: Los Talas, Barrio Obrero, Villa Argüello"]
+</label>
+
+<label>Dirección o referencia (opcional)
+[text direccion placeholder "Ej: 80 entre 172 y 173, frente a la plaza"]
+</label>
+
+<label>Categoría
+[select* categoria include_blank "Agua" "Inseguridad" "Calles y baches" "Basura" "Iluminación" "Salud" "Transporte" "Burocracia" "Pastizales" "Otro"]
+</label>
+
+<label>Descripción
+[textarea* descripcion placeholder "Contanos brevemente qué está pasando, dónde ocurre y desde cuándo."]
+</label>
+
+<label>Foto opcional
+<p style="color:#f7e7b0;font-size:14px;margin-bottom:8px!important;">
+📸 Foto opcional. Máximo recomendado: 3 MB. Si el formulario falla, probá sacar una foto más liviana o enviar sin foto.
+</p>
+[file foto limit:3mb filetypes:jpg|jpeg|png|webp]
+</label>
+
+<div class="pl-submit-wrap">
+[submit class:pl-submit "Enviar reporte"]
+</div>
+
+</div>

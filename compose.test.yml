@@ -59,6 +59,50 @@ services:
     volumes:
       - ./sql:/seed:ro
 
+  mysql-wordpress-test:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: wordpress_test
+      MYSQL_USER: wordpress_test
+      MYSQL_PASSWORD: wordpress_test
+      MYSQL_ROOT_PASSWORD: root_test_only
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping --host=127.0.0.1 --user=root --password=$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - mysql-wordpress-test-data:/var/lib/mysql
+
+  wordpress-test:
+    image: wordpress:6.9.4-php8.3-apache
+    environment:
+      WORDPRESS_DB_HOST: mysql-wordpress-test:3306
+      WORDPRESS_DB_NAME: wordpress_test
+      WORDPRESS_DB_USER: wordpress_test
+      WORDPRESS_DB_PASSWORD: wordpress_test
+      WORDPRESS_DEBUG: "1"
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      mysql-wordpress-test:
+        condition: service_healthy
+      api-test:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - php
+        - -r
+        - "exit(@fsockopen('127.0.0.1', 80) ? 0 : 1);"
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - wordpress-test-data:/var/www/html
+
 volumes:
   postgres-test-data:
   uploads-test-data:
+  mysql-wordpress-test-data:
+  wordpress-test-data:
