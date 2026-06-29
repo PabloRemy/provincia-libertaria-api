@@ -197,6 +197,7 @@ Continuar la Etapa 4 desde WordPress local:
 1. Abrir `http://127.0.0.1:8080/wp-admin`.
 2. Crear `Reporte de barrio local` en Contact Form 7.
 3. Copiar el contenido de `wordpress/cf7-formulario-reporte.txt`.
+   PHP local ya está configurado para aceptar el límite de fotos de 3 MB.
 4. Configurar el webhook interno
    `http://api-test:8000/incidente-foto-json`.
 5. Agregar `skip_mail: on` en Ajustes adicionales.

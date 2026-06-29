@@ -5,6 +5,7 @@
 - Nombre: `Reporte de barrio local`.
 - Contenido: `cf7-formulario-reporte.txt`.
 - El barrio, la dirección, la foto y el GPS son opcionales.
+- PHP local admite archivos de hasta 4 MB; CF7 limita las fotos a 3 MB.
 
 ## Webhook
 
