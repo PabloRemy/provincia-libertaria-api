@@ -68,7 +68,8 @@ Los entornos deben permanecer separados.
 ### Todavía no realizado
 
 - No se probó la aplicación completa desde el navegador.
-- Falta crear y guardar el formulario CF7 local con la plantilla preparada.
+- El formulario CF7 local fue creado con la plantilla preparada y guarda sin
+  errores de configuración. Falta completar y validar su integración.
 - No se comparó la copia local con la versión actualmente desplegada en el VPS.
 - No existe todavía un procedimiento de publicación, respaldo y reversión.
 
@@ -194,14 +195,15 @@ Condición de finalización: cambio desplegado, verificado y reversible.
 
 Continuar la Etapa 4 desde WordPress local:
 
-1. Abrir `http://127.0.0.1:8080/wp-admin`.
-2. Crear `Reporte de barrio local` en Contact Form 7.
-3. Copiar el contenido de `wordpress/cf7-formulario-reporte.txt`.
-   PHP local ya está configurado para aceptar el límite de fotos de 3 MB.
-4. Configurar el webhook interno
+1. Levantar el entorno con
+   `sudo docker compose -f compose.test.yml up -d --wait`.
+2. Abrir `http://127.0.0.1:8080/wp-admin` y editar el formulario local ya
+   creado. La plantilla está aplicada y no presenta errores; PHP admite el
+   límite de fotos de 3 MB.
+3. Configurar o verificar el webhook interno
    `http://api-test:8000/incidente-foto-json`.
-5. Agregar `skip_mail: on` en Ajustes adicionales.
-6. Guardar, crear una página local con el shortcode y enviar un reporte sin
+4. Agregar o verificar `skip_mail: on` en Ajustes adicionales.
+5. Guardar, crear una página local con el shortcode y enviar un reporte sin
    barrio ni foto.
 
 No agregar todavía el JavaScript productivo de redirecciones porque dirige al
