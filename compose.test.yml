@@ -1,0 +1,19 @@
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: provincia_libertaria_test
+      POSTGRES_USER: provincia_test
+      POSTGRES_PASSWORD: provincia_test
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U provincia_test -d provincia_libertaria_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    volumes:
+      - postgres-test-data:/var/lib/postgresql/data
+
+volumes:
+  postgres-test-data:
