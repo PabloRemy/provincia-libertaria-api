@@ -63,7 +63,6 @@ Los entornos deben permanecer separados.
 
 ### Todavía no realizado
 
-- La API todavía no se ejecuta dentro del entorno Docker local.
 - No existe un conjunto formal de datos ficticios iniciales.
 - No se probó la aplicación completa desde el navegador.
 - No se comparó la copia local con la versión actualmente desplegada en el VPS.
@@ -128,7 +127,7 @@ sudo docker compose -f compose.test.yml down -v
 Condición de finalización: existe un punto de restauración local y las 25
 pruebas continúan aprobando.
 
-### Etapa 2 — API local completa
+### Etapa 2 — API local completa (completada)
 
 1. Incorporar FastAPI a `compose.test.yml` o a una configuración local
    equivalente.
@@ -180,8 +179,8 @@ Condición de finalización: cambio desplegado, verificado y reversible.
 
 ## Próximo paso acordado
 
-Comenzar la Etapa 2: incorporar FastAPI al entorno local y conectarla
-exclusivamente con PostgreSQL de pruebas.
+Comenzar la Etapa 3: crear datos ficticios reproducibles para Berisso,
+Ensenada y La Plata, junto con usuarios administrativos de distintos alcances.
 
 ## Reglas de seguridad
 

@@ -12,7 +12,7 @@ No requieren PostgreSQL ni escriben en `/data`.
 
 ## Pruebas con PostgreSQL y Docker
 
-Levantar la base aislada y copiar la configuración local:
+Levantar PostgreSQL y FastAPI aislados, y copiar la configuración local:
 
 ```bash
 sudo docker compose -f compose.test.yml up -d --wait
@@ -21,6 +21,13 @@ set -a
 source .env.test
 set +a
 .venv/bin/pytest
+```
+
+La API local queda disponible en:
+
+```text
+http://127.0.0.1:8000
+http://127.0.0.1:8000/docs
 ```
 
 La prueba crea las tablas necesarias, inserta un registro dentro de una

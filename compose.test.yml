@@ -14,6 +14,33 @@ services:
       retries: 15
     volumes:
       - postgres-test-data:/var/lib/postgresql/data
+      - ./sql/test_schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+
+  api-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    environment:
+      DATABASE_URL: postgresql://provincia_test:provincia_test@postgres-test:5432/provincia_libertaria_test
+      ADMIN_USERS: admin-test:clave-test:todos
+      DATA_DIR: /data
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=2)"
+      interval: 3s
+      timeout: 3s
+      retries: 15
+    volumes:
+      - uploads-test-data:/data/uploads
 
 volumes:
   postgres-test-data:
+  uploads-test-data:
