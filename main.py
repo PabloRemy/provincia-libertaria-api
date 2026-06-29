@@ -5,7 +5,8 @@ import json
 import html
 import secrets
 from io import BytesIO
-from typing import Optional, List
+from typing import Optional, List, Union
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request, Depends, status
 from fastapi.staticfiles import StaticFiles
@@ -174,12 +175,12 @@ class FotoBase64(BaseModel):
 
 class IncidenteFotoJSON(BaseModel):
     ciudad: str
-    barrio: str
+    barrio: Optional[str] = None
     categoria: str
     categoria_detalle: Optional[str] = None
     descripcion: str
     direccion: Optional[str] = None
-    foto: Optional[FotoBase64] = None
+    foto: Optional[Union[FotoBase64, str]] = None
     estado: Optional[str] = "pendiente"
     origen: Optional[str] = "vecino"
     fuente: Optional[str] = "formulario"
@@ -368,6 +369,35 @@ def procesar_foto_base64(foto: FotoBase64) -> Optional[str]:
         raise HTTPException(status_code=400, detail=f"No se pudo procesar la imagen base64: {str(e)}")
 
 
+def procesar_foto_webhook(foto: Optional[Union[FotoBase64, str]]) -> Optional[str]:
+    if foto is None:
+        return None
+
+    if isinstance(foto, FotoBase64):
+        return procesar_foto_base64(foto)
+
+    foto_url = foto.strip()
+    if not foto_url:
+        return None
+
+    parsed = urlparse(foto_url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise HTTPException(status_code=400, detail="URL de foto inválida")
+
+    return foto_url
+
+
+def url_publica_foto(foto_url: Optional[str]) -> Optional[str]:
+    if not foto_url:
+        return None
+
+    parsed = urlparse(foto_url)
+    if parsed.scheme in ("http", "https") and parsed.netloc:
+        return foto_url
+
+    return f"/foto/{foto_url.split('/')[-1]}"
+
+
 @app.get("/foto/{nombre}")
 def ver_foto(nombre: str):
     if "/" in nombre or ".." in nombre:
@@ -440,11 +470,11 @@ def crear_incidente(incidente: Incidente):
 @app.post("/incidente-foto-json")
 def crear_incidente_con_foto_json(incidente: IncidenteFotoJSON):
     try:
-        foto_url = procesar_foto_base64(incidente.foto) if incidente.foto else None
+        foto_url = procesar_foto_webhook(incidente.foto)
 
         nuevo_id = insertar_incidente(
             ciudad=incidente.ciudad,
-            barrio=incidente.barrio,
+            barrio=incidente.barrio or "Sin especificar",
             categoria=incidente.categoria,
             descripcion=incidente.descripcion,
             categoria_detalle=incidente.categoria_detalle,
@@ -521,11 +551,11 @@ def editar_incidente_form(incidente_id: int, admin = Depends(get_current_admin))
 
     foto_html = ""
     if foto_url:
-        nombre_foto = foto_url.split("/")[-1]
+        foto_src = url_publica_foto(foto_url)
         foto_html = f"""
         <div class="foto-actual">
             <p><strong>Foto actual</strong></p>
-            <img src="/foto/{html.escape(nombre_foto)}" alt="Foto actual">
+            <img src="{html.escape(foto_src or '', quote=True)}" alt="Foto actual">
             <label class="checkline">
                 <input type="checkbox" name="quitar_foto" value="1">
                 Quitar foto actual
@@ -1513,8 +1543,8 @@ def panel_distrito(distrito_slug: str, estado: str = "pendiente", admin = Depend
         direccion_html = f'<p class="direccion">🧭 {direccion_safe}</p>' if direccion_safe else ""
 
         if foto_url:
-            nombre_foto = foto_url.split("/")[-1]
-            imagen_html = f'<img src="/foto/{html.escape(nombre_foto)}" alt="Foto del reporte">'
+            foto_src = url_publica_foto(foto_url)
+            imagen_html = f'<img src="{html.escape(foto_src or "", quote=True)}" alt="Foto del reporte">'
         else:
             imagen_html = '<div class="sin-foto">Sin foto</div>'
 
@@ -2021,8 +2051,8 @@ def reportes_publicos(distrito_slug: str):
         direccion_html = f'<p class="direccion">🧭 {direccion_safe}</p>' if direccion_safe else ""
 
         if foto_url:
-            nombre_foto = foto_url.split("/")[-1]
-            imagen_html = f'<img src="/foto/{html.escape(nombre_foto)}" alt="Foto del reporte">'
+            foto_src = url_publica_foto(foto_url)
+            imagen_html = f'<img src="{html.escape(foto_src or "", quote=True)}" alt="Foto del reporte">'
         else:
             imagen_html = '<div class="sin-foto">Sin foto</div>'
 

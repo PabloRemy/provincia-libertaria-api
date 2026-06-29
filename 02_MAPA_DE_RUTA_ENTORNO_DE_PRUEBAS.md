@@ -148,7 +148,8 @@ de prueba desde cero.
 
 ### Etapa 4 — Validación funcional
 
-1. Probar formularios de reclutamiento y reportes.
+1. Probar formularios de reclutamiento y reportes. En progreso: validado un
+   reporte sin barrio, foto ni GPS mediante el endpoint usado por CF7.
 2. Probar autenticación y restricciones por distrito.
 3. Probar carga y visualización de imágenes.
 4. Probar paneles, mapas, filtros y moderación.
