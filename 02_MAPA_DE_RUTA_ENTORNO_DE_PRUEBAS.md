@@ -150,9 +150,16 @@ de prueba desde cero.
 
 1. Probar formularios de reclutamiento y reportes. En progreso: validado un
    reporte sin barrio, foto ni GPS mediante el endpoint usado por CF7.
-2. Probar autenticación y restricciones por distrito.
-3. Probar carga y visualización de imágenes.
-4. Probar paneles, mapas, filtros y moderación.
+   Sigue pendiente el formulario de reclutamiento y el envío desde un WordPress
+   local con CF7.
+2. Probar autenticación y restricciones por distrito. Validado: un usuario de
+   Berisso obtiene acceso a Berisso y rechazo `403` en Ensenada.
+3. Probar carga y visualización de imágenes. Validado: recepción Base64,
+   conversión a WebP, persistencia y entrega HTTP. El enlace generado por CF7
+   está cubierto por pruebas automáticas y falta validarlo con WordPress local.
+4. Probar paneles, mapas, filtros y moderación. Validado: panel distrital,
+   publicación de un reporte, vista pública, mapa, marcadores y ventanas de
+   detalle.
 5. Agregar pruebas automáticas para los defectos encontrados.
 
 Condición de finalización: los recorridos principales funcionan mediante API y
