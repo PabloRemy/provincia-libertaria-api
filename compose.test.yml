@@ -40,6 +40,10 @@ services:
       retries: 15
     volumes:
       - uploads-test-data:/data/uploads
+    networks:
+      default:
+        aliases:
+          - api-test.local
 
   seed-test:
     image: postgres:16-alpine
@@ -101,6 +105,7 @@ services:
     volumes:
       - wordpress-test-data:/var/www/html
       - ./wordpress/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:ro
+      - ./wordpress/mu-plugins:/var/www/html/wp-content/mu-plugins:ro
 
 volumes:
   postgres-test-data:

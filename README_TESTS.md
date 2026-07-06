@@ -10,6 +10,12 @@ python3 -m venv .venv
 
 No requieren PostgreSQL ni escriben en `/data`.
 
+Para ejecutar sólo las pruebas que no dependen de PostgreSQL:
+
+```bash
+.venv/bin/pytest -q -m "not database"
+```
+
 ## Pruebas con PostgreSQL y Docker
 
 Levantar PostgreSQL y FastAPI aislados, y copiar la configuración local:

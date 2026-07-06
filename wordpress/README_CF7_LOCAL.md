@@ -12,7 +12,7 @@
 La URL se resuelve dentro de la red privada de Docker:
 
 ```text
-http://api-test:8000/incidente-foto-json
+http://api-test.local:8000/incidente-foto-json
 ```
 
 No usar la URL pública en el entorno local.

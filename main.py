@@ -5,7 +5,7 @@ import json
 import html
 import secrets
 from io import BytesIO
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Any
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request, Depends, status
@@ -373,6 +373,9 @@ def procesar_foto_webhook(foto: Optional[Union[FotoBase64, str]]) -> Optional[st
     if foto is None:
         return None
 
+    if isinstance(foto, dict):
+        return procesar_foto_base64(FotoBase64.model_validate(foto))
+
     if isinstance(foto, FotoBase64):
         return procesar_foto_base64(foto)
 
@@ -385,6 +388,76 @@ def procesar_foto_webhook(foto: Optional[Union[FotoBase64, str]]) -> Optional[st
         raise HTTPException(status_code=400, detail="URL de foto inválida")
 
     return foto_url
+
+
+def limpiar_payload_webhook(payload: dict[str, Any]) -> dict[str, Any]:
+    limpio = dict(payload)
+
+    for campo in ("latitud", "longitud"):
+        if limpio.get(campo) == "":
+            limpio[campo] = None
+
+    for campo in ("barrio", "categoria_detalle", "direccion", "foto"):
+        if limpio.get(campo) == "":
+            limpio[campo] = None
+
+    return limpio
+
+
+async def leer_payload_webhook(request: Request) -> tuple[dict[str, Any], Optional[UploadFile]]:
+    content_type = request.headers.get("content-type", "")
+
+    if "application/json" in content_type:
+        return limpiar_payload_webhook(await request.json()), None
+
+    if (
+        "application/x-www-form-urlencoded" in content_type
+        or "multipart/form-data" in content_type
+    ):
+        form = await request.form()
+        payload = {}
+        foto_upload = None
+
+        for key, value in form.multi_items():
+            if hasattr(value, "filename") and hasattr(value, "file"):
+                if key == "foto" and value.filename:
+                    foto_upload = value
+                else:
+                    payload[key] = ""
+                continue
+
+            payload[key] = value
+
+        return limpiar_payload_webhook(payload), foto_upload
+
+    return limpiar_payload_webhook(await request.json()), None
+
+
+def guardar_incidente_con_foto_json(
+    incidente: IncidenteFotoJSON,
+    foto_upload: Optional[UploadFile] = None
+):
+    if foto_upload:
+        foto_url = procesar_foto_upload(foto_upload)
+    else:
+        foto_url = procesar_foto_webhook(incidente.foto)
+
+    nuevo_id = insertar_incidente(
+        ciudad=incidente.ciudad,
+        barrio=incidente.barrio or "Sin especificar",
+        categoria=incidente.categoria,
+        descripcion=incidente.descripcion,
+        categoria_detalle=incidente.categoria_detalle,
+        direccion=incidente.direccion,
+        foto_url=foto_url,
+        estado=incidente.estado or "pendiente",
+        origen=incidente.origen,
+        fuente=incidente.fuente,
+        latitud=incidente.latitud,
+        longitud=incidente.longitud,
+    )
+
+    return {"ok": True, "id": nuevo_id, "foto_url": foto_url}
 
 
 def url_publica_foto(foto_url: Optional[str]) -> Optional[str]:
@@ -468,26 +541,11 @@ def crear_incidente(incidente: Incidente):
 
 
 @app.post("/incidente-foto-json")
-def crear_incidente_con_foto_json(incidente: IncidenteFotoJSON):
+async def crear_incidente_con_foto_json(request: Request):
     try:
-        foto_url = procesar_foto_webhook(incidente.foto)
-
-        nuevo_id = insertar_incidente(
-            ciudad=incidente.ciudad,
-            barrio=incidente.barrio or "Sin especificar",
-            categoria=incidente.categoria,
-            descripcion=incidente.descripcion,
-            categoria_detalle=incidente.categoria_detalle,
-            direccion=incidente.direccion,
-            foto_url=foto_url,
-            estado=incidente.estado or "pendiente",
-            origen=incidente.origen,
-            fuente=incidente.fuente,
-            latitud=incidente.latitud,
-            longitud=incidente.longitud,
-        )
-
-        return {"ok": True, "id": nuevo_id, "foto_url": foto_url}
+        payload, foto_upload = await leer_payload_webhook(request)
+        incidente = IncidenteFotoJSON.model_validate(payload)
+        return guardar_incidente_con_foto_json(incidente, foto_upload)
 
     except HTTPException:
         raise
