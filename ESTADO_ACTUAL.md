@@ -1,6 +1,20 @@
 # Estado actual de Provincia Libertaria
 
-Fecha de referencia: 1 de julio de 2026.
+Fecha de referencia: 13 de julio de 2026.
+
+## Estado Git y sincronización
+
+- Clon local: `/home/desk/Documentos/Proyectos/provincia-libertaria-api`.
+- Rama activa de desarrollo: `integracion-local-sobre-github`, publicada como
+  `origin/integracion-local-sobre-github` en `0eafb96` al comenzar esta
+  actualización documental.
+- Rama productiva: `main`; `origin/main` está en `abc9807`.
+- Producción continúa desplegada desde GitHub. Falta verificar qué commit exacto
+  se encuentra ejecutando el VPS.
+- Los historiales de ambas ramas son independientes y no tienen ancestro común.
+  No se deben mezclar mediante `pull`, merge o rebase automático.
+- `integracion-local-sobre-github` es la fuente de verdad técnica para el
+  desarrollo; `main` conserva la referencia productiva e histórica.
 
 ## Estado real del proyecto
 
@@ -62,35 +76,20 @@ fue validada.
 Los directorios `.venv/`, `.pytest_cache/` y `__pycache__/` son artefactos
 locales ignorados por Git; no son código fuente.
 
-## Cambios locales sin commit
+## Estado del árbol de trabajo
 
-Al momento de crear este documento, Git informa modificaciones sin commit en:
-
-- `02_MAPA_DE_RUTA_ENTORNO_DE_PRUEBAS.md`
-- `README_TESTS.md`
-- `compose.test.yml`
-- `main.py`
-- `tests/test_cf7_webhook.py`
-- `wordpress/README_CF7_LOCAL.md`
-
-También existen archivos nuevos sin seguimiento:
-
-- `wordpress/VALIDACION_CF7_LOCAL.md`
-- `wordpress/mu-plugins/provincia-libertaria-cf7-local.php`
-- `ESTADO_ACTUAL.md`
-
-Los cambios locales de `main.py` amplían la compatibilidad del webhook con
-formularios CF7, normalizan campos vacíos y separan el guardado en una función
-auxiliar. No deben desplegarse ni descartarse hasta revisarlos, probarlos y
-compararlos con producción.
+El árbol estaba limpio al comenzar esta tarea. Los únicos cambios sin commit al
+cerrarla deben ser los documentos creados o actualizados por esta sincronización:
+`README.md`, `CONTINUAR_DESDE_AQUI.md` y `ESTADO_ACTUAL.md`. No se modificaron
+`main.py`, Docker, tests ni configuración.
 
 ## Qué NO se debe tocar
 
 - No modificar producción ni conectarse a su base para hacer pruebas.
 - No desplegar el estado local actual.
-- No modificar `main.py` hasta establecer una línea base de pruebas y revisar
-  los cambios existentes.
-- No borrar ni sobrescribir los cambios locales sin commit.
+- No modificar `main.py` hasta volver a verificar la línea base de pruebas y
+  comparar el estado de integración con producción.
+- No mezclar automáticamente `main` e `integracion-local-sobre-github`.
 - No ejecutar `git reset --hard`, `git clean`, `git checkout --` ni operaciones
   equivalentes sobre trabajo no revisado.
 - No apuntar `DATABASE_URL` o `TEST_DATABASE_URL` a producción.
@@ -120,18 +119,19 @@ compararlos con producción.
 
 ## Próximo paso recomendado
 
-1. Preservar el estado actual y revisar el diff completo sin modificarlo.
-2. Levantar exclusivamente el entorno local descartable.
-3. Ejecutar la suite sin PostgreSQL y luego la suite completa.
-4. Registrar resultados, incluyendo la cantidad real de pruebas y cualquier
+1. Levantar exclusivamente el entorno local descartable.
+2. Ejecutar la suite sin PostgreSQL y luego la suite completa.
+3. Registrar resultados, incluyendo la cantidad real de pruebas y cualquier
    falla reproducible.
-5. Revisar y confirmar qué archivos sin commit deben conservarse.
-6. Crear un commit de línea base local claramente identificado.
-7. Inventariar producción en modo de solo lectura: versión de código, esquema,
+4. Validar el contrato CF7, revisar `/debug` y confirmar la definición de
+   Dockerfile que corresponde a cada entorno.
+5. Inventariar producción en modo de solo lectura: versión de código, esquema,
    configuración requerida y persistencia de archivos, sin extraer secretos.
-8. Definir respaldo, comprobaciones posteriores y reversión.
-9. Agregar pruebas de caracterización de rutas críticas.
-10. Recién después iniciar la separación incremental de módulos de bajo riesgo.
+6. Comparar ese estado con `integracion-local-sobre-github` sin integrar los
+   historiales automáticamente.
+7. Definir respaldo, comprobaciones posteriores y reversión.
+8. Agregar pruebas de caracterización de rutas críticas.
+9. Recién después iniciar la separación incremental de módulos de bajo riesgo.
 
 ## Comandos básicos para pruebas
 
