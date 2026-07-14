@@ -1,13 +1,14 @@
 # Estado actual de Provincia Libertaria
 
-Fecha de referencia: 13 de julio de 2026.
+Fecha de referencia: 14 de julio de 2026. Validaciones realizadas el 13/14 de
+julio de 2026.
 
 ## Estado Git y sincronización
 
 - Clon local: `/home/desk/Documentos/Proyectos/provincia-libertaria-api`.
 - Rama activa de desarrollo: `integracion-local-sobre-github`, publicada como
-  `origin/integracion-local-sobre-github` en `0eafb96` al comenzar esta
-  actualización documental.
+  `origin/integracion-local-sobre-github` en `2a8b556` al comenzar las
+  validaciones.
 - Rama productiva: `main`; `origin/main` está en `abc9807`.
 - Producción continúa desplegada desde GitHub. Falta verificar qué commit exacto
   se encuentra ejecutando el VPS.
@@ -18,12 +19,15 @@ Fecha de referencia: 13 de julio de 2026.
 
 ## Estado real del proyecto
 
-Provincia Libertaria es un prototipo funcional avanzado, todavía en etapa de
-validación local. La API, la base de datos de pruebas, los paneles territoriales
-y la integración local con WordPress están implementados, pero el proyecto aún
-no tiene una línea base comprobada contra lo desplegado en producción.
+Provincia Libertaria es un prototipo funcional avanzado con una línea base local
+completa y reproducible. FastAPI, PostgreSQL, WordPress, CF7, paneles, mapa,
+autenticación, fotos y persistencia fueron validados en el entorno aislado. El
+proyecto aún no tiene una línea base comparada contra lo desplegado en
+producción.
 
-La etapa real es la **Etapa 4 — Validación funcional**, parcialmente completada.
+La **Etapa 4 — Validación funcional** está completada para los recorridos locales
+registrados en esta línea base. Permanecen fuera de este cierre la comparación
+productiva y otros recorridos sin cobertura suficiente.
 La **Etapa 4.5 — Orden interno de `main.py`** está planificada, pero no comenzó.
 No existe todavía un procedimiento probado de publicación, respaldo y
 reversión.
@@ -43,14 +47,24 @@ reversión.
 - Edición y moderación individual o por lote.
 - Vistas públicas de reportes.
 - Tablero territorial con Leaflet y OpenStreetMap.
-- Entorno Docker local aislado para API, PostgreSQL, WordPress y MySQL.
+- Linux Mint 22.3 Zena, base Ubuntu Noble `amd64`, Python 3.12.3 y `.venv`.
+- Docker Engine y Docker Compose instalados y validados con `hello-world`.
+- Entorno Docker local aislado con `postgres-test`, `api-test`,
+  `mysql-wordpress-test` y `wordpress-test` saludables.
 - Datos ficticios reproducibles para Berisso, Ensenada y La Plata.
-- Webhook directo y envío desde CF7 local sin foto validados manualmente.
-- Suite automática de pruebas unitarias y una prueba de integración PostgreSQL.
+- Suite sin PostgreSQL: 30 aprobadas, 1 deseleccionada y 1 advertencia.
+- Suite completa con `TEST_DATABASE_URL`: 31 aprobadas y 1 advertencia.
+- FastAPI `/`, `/docs` y `/openapi.json` respondieron 200.
+- Panel de Tercera Sección, paneles de Berisso, Ensenada y La Plata, tablero,
+  marcadores ficticios y autenticación administrativa validados visualmente.
+- WordPress y CF7 validados con y sin foto mediante el mu-plugin local.
+- Carga CF7 con foto validada extremo a extremo: persistencia de `foto_url`,
+  creación WebP, visualización mediante `/foto/...` y panel de Berisso.
+- Persistencia comprobada tras detener sin `-v` y volver a levantar el entorno.
 
-La carga de imágenes desde CF7 local no está resuelta: el incidente se guarda,
-pero en el caso reproducido `foto_url` quedó vacío. La carga directa por API sí
-fue validada.
+La incidencia anterior de imágenes desde CF7 local ya no se reproduce en el
+entorno actual. Este resultado no confirma el comportamiento de producción ni
+implica que allí se haya corregido nada.
 
 ## Archivos importantes
 
@@ -78,10 +92,9 @@ locales ignorados por Git; no son código fuente.
 
 ## Estado del árbol de trabajo
 
-El árbol estaba limpio al comenzar esta tarea. Los únicos cambios sin commit al
-cerrarla deben ser los documentos creados o actualizados por esta sincronización:
-`README.md`, `CONTINUAR_DESDE_AQUI.md` y `ESTADO_ACTUAL.md`. No se modificaron
-`main.py`, Docker, tests ni configuración.
+El árbol Git estuvo limpio antes y después de las validaciones. Los únicos
+cambios previstos en esta tarea son documentales. No se modificaron `main.py`,
+Docker, Compose, tests, SQL, WordPress ni configuración funcional.
 
 ## Qué NO se debe tocar
 
@@ -101,7 +114,8 @@ cerrarla deben ser los documentos creados o actualizados por esta sincronizació
 
 ## Riesgos actuales
 
-1. `main.py` concentra toda la aplicación en aproximadamente 2.500 líneas.
+1. `main.py` concentra toda la aplicación en aproximadamente 2.500 líneas; su
+   modularización todavía no comenzó.
 2. Local y producción todavía no fueron comparados.
 3. Las dependencias de `requirements.txt` no tienen versiones fijadas.
 4. Las pruebas no cubren suficientemente paneles, moderación, archivos,
@@ -114,24 +128,24 @@ cerrarla deben ser los documentos creados o actualizados por esta sincronizació
    cierre o rollback frente a errores.
 9. No existe un sistema de migraciones versionadas.
 10. No hay procedimiento probado de respaldo, despliegue y reversión.
-11. La documentación declara cantidades de pruebas anteriores al estado actual.
-12. La integración de imágenes desde CF7 local continúa incompleta.
+11. La producción no fue validada con CF7 ni comparada con el entorno local.
+
+## Mejora técnica no bloqueante
+
+- Pytest informa una `StarletteDeprecationWarning` por el uso de `httpx` con
+  `starlette.testclient`. No afecta el resultado actual de 30/31 pruebas.
 
 ## Próximo paso recomendado
 
-1. Levantar exclusivamente el entorno local descartable.
-2. Ejecutar la suite sin PostgreSQL y luego la suite completa.
-3. Registrar resultados, incluyendo la cantidad real de pruebas y cualquier
-   falla reproducible.
-4. Validar el contrato CF7, revisar `/debug` y confirmar la definición de
-   Dockerfile que corresponde a cada entorno.
-5. Inventariar producción en modo de solo lectura: versión de código, esquema,
+1. Revisar la exposición y necesidad de `/debug`.
+2. Comparar `Dockerfile.txt` con `Dockerfile.test`.
+3. Inventariar producción en modo de solo lectura: versión de código, esquema,
    configuración requerida y persistencia de archivos, sin extraer secretos.
-6. Comparar ese estado con `integracion-local-sobre-github` sin integrar los
+4. Comparar ese estado con `integracion-local-sobre-github` sin integrar los
    historiales automáticamente.
-7. Definir respaldo, comprobaciones posteriores y reversión.
-8. Agregar pruebas de caracterización de rutas críticas.
-9. Recién después iniciar la separación incremental de módulos de bajo riesgo.
+5. Definir publicación, respaldo, comprobaciones posteriores y reversión.
+6. Agregar pruebas de caracterización de rutas críticas.
+7. Recién después iniciar la separación incremental de módulos de bajo riesgo.
 
 ## Comandos básicos para pruebas
 
@@ -160,7 +174,7 @@ Cargar las variables locales y ejecutar toda la suite:
 set -a
 source .env.test
 set +a
-.venv/bin/pytest
+.venv/bin/pytest -q
 ```
 
 Restablecer los datos ficticios locales:
@@ -209,12 +223,12 @@ docker compose -f compose.test.yml down -v
 - [ ] Revisar y cerrar todos los cambios locales sin commit.
 - [ ] Confirmar que no se incluyen `.env`, secretos ni datos reales.
 - [ ] Fijar y revisar las versiones de dependencias.
-- [ ] Construir la imagen Docker desde cero.
-- [ ] Ejecutar la suite completa y registrar el resultado.
+- [x] Levantar y validar el entorno Docker local.
+- [x] Ejecutar la suite completa y registrar el resultado.
 - [ ] Probar alta, edición, moderación y publicación de reportes en local.
 - [ ] Probar autenticación y permisos de todos los alcances.
 - [ ] Probar reclutamiento, GPS y fotos de extremo a extremo.
-- [ ] Resolver o aceptar explícitamente la incidencia de imágenes CF7 local.
+- [x] Validar imágenes CF7 extremo a extremo en local.
 - [ ] Proteger o retirar `/debug`.
 - [ ] Revisar exposición de errores, payloads y datos personales.
 - [ ] Preparar un respaldo verificable de base y archivos.

@@ -1,16 +1,16 @@
 # Continuar desde aquí
 
-Actualizado: 2026-07-13.
+Actualizado: 2026-07-14.
 
 ## Punto de partida verificado
 
 - Repositorio: `https://github.com/PabloRemy/provincia-libertaria-api.git`.
 - Clon local: `/home/desk/Documentos/Proyectos/provincia-libertaria-api`.
 - Rama activa de desarrollo: `integracion-local-sobre-github`.
-- Commit al iniciar esta actualización documental: `0eafb96`.
-- La rama local coincide con `origin/integracion-local-sobre-github` y el árbol
-  estaba limpio antes de esta actualización.
-- Rama productiva: `main`; `origin/main` está en `abc9807`.
+- Commit de partida de la validación local: `2a8b556`.
+- La rama local coincidía con `origin/integracion-local-sobre-github` y el árbol
+  estaba limpio antes y después de las validaciones.
+- Rama productiva: `main`; `origin/main` permanece en `abc9807`.
 - Producción continúa desplegada desde GitHub, pero falta identificar en modo
   lectura qué commit exacto ejecuta actualmente el VPS.
 
@@ -21,35 +21,41 @@ no poseen ancestro común. No ejecutar `pull`, merge ni rebase automático entre
 ellas. `main` conserva la referencia productiva e histórica;
 `integracion-local-sobre-github` es la fuente de verdad técnica para desarrollo.
 
-La rama de integración contiene documentación, tests, un entorno local aislado
-con datos ficticios y un `main.py` más avanzado. La sincronización futura debe
-ser manual, revisada y controlada.
+La sincronización futura debe ser manual, revisada y controlada.
 
-## Estado de trabajo
+## Estado de trabajo confirmado
 
-- Entorno local de FastAPI, PostgreSQL, WordPress y MySQL definido en
-  `compose.test.yml`.
-- Suite automatizada disponible en `tests/`; el último estado documentado prevé
-  29 pruebas sin PostgreSQL y 30 con PostgreSQL, pero debe volver a ejecutarse
-  para verificar el resultado actual.
-- Webhook directo y envío CF7 local sin foto documentados como validados.
-- La carga de imagen desde CF7 local sigue registrada como incidencia no
-  bloqueante; la API directa sí fue validada.
-- No se comparó todavía la rama de integración con el código efectivamente
-  desplegado ni existe un procedimiento probado de publicación, respaldo y
-  reversión.
+- Linux Mint 22.3 Zena sobre Ubuntu Noble `amd64`, Python 3.12.3 y `.venv`
+  operativos. Docker Engine y Docker Compose instalados y comprobados.
+- Suite sin PostgreSQL: 30 aprobadas, 1 deseleccionada y 1 advertencia. Suite
+  completa con `TEST_DATABASE_URL`: 31 aprobadas y 1 advertencia.
+- La `StarletteDeprecationWarning` por Starlette/httpx es una mejora técnica no
+  bloqueante.
+- `postgres-test`, `api-test`, `mysql-wordpress-test` y `wordpress-test`
+  alcanzaron estado `healthy`.
+- FastAPI, `/docs`, `/openapi.json`, WordPress, paneles territoriales, tablero,
+  marcadores ficticios y autenticación administrativa fueron validados.
+- La base aislada `provincia_libertaria_test` recibió 9 incidentes y 3 registros
+  ficticios de reclutamiento.
+- WordPress y CF7 fueron validados con y sin foto mediante el mu-plugin local,
+  sin plugin externo de webhooks ni envío de correo.
+- La carga CF7 con foto funciona extremo a extremo en local: el incidente 11,
+  `foto_url`, archivo WebP, ruta `/foto/...` y panel de Berisso fueron
+  verificados visualmente.
+- La persistencia de WordPress, PostgreSQL y el WebP se conservó después de
+  `docker compose down` sin `-v` y un nuevo arranque.
+- Producción permaneció intacta. No se comparó todavía la rama de integración
+  con el código y la configuración efectivamente desplegados.
 
 ## Próximo paso exacto
 
-1. Revisar `README_TESTS.md` y levantar sólo el entorno local aislado.
-2. Ejecutar la suite sin PostgreSQL y luego la suite completa; registrar el
-   resultado real.
-3. Validar el contrato WordPress/CF7, la exposición de `/debug` y la definición
-   de Dockerfile.
-4. Identificar en producción, en modo lectura, el commit o contenido exacto
-   desplegado y compararlo con la rama de integración.
-5. Preparar un procedimiento manual de publicación con respaldo,
-   comprobaciones posteriores y reversión.
+1. Revisar la exposición y necesidad de `/debug`.
+2. Revisar `Dockerfile.txt` frente a `Dockerfile.test`.
+3. Identificar en producción, sólo en lectura, el commit o contenido exacto
+   desplegado.
+4. Comparar integración con producción sin mezclar los historiales.
+5. Preparar un procedimiento de publicación con respaldo, comprobaciones
+   posteriores y reversión.
 
 No modificar producción, no integrar historiales y no desplegar sin autorización
 expresa.

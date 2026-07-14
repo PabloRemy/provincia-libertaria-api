@@ -1,75 +1,107 @@
-# Entorno de pruebas
+# Entorno local de pruebas
 
-## Pruebas unitarias
+Línea base validada el 13/14 de julio de 2026 en Linux Mint 22.3 Zena, base
+Ubuntu Noble y arquitectura `amd64`, con Python 3.12.3, Docker Engine y Docker
+Compose. Docker fue comprobado previamente con `hello-world`.
+
+El entorno usa exclusivamente credenciales ficticias, la base local
+`provincia_libertaria_test` y puertos publicados en loopback. No existe conexión
+con producción.
+
+## Preparar Python y ejecutar pruebas sin PostgreSQL
 
 ```bash
 python3 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
 .venv/bin/python -m pip install -r requirements-dev.txt
-.venv/bin/pytest
-```
-
-No requieren PostgreSQL ni escriben en `/data`.
-
-Para ejecutar sólo las pruebas que no dependen de PostgreSQL:
-
-```bash
 .venv/bin/pytest -q -m "not database"
 ```
 
-## Pruebas con PostgreSQL y Docker
+Resultado validado:
 
-Levantar PostgreSQL y FastAPI aislados, y copiar la configuración local:
+```text
+30 passed, 1 deselected, 1 warning
+```
+
+La advertencia es una `StarletteDeprecationWarning` relacionada con el uso de
+`httpx` desde `starlette.testclient`. Es una mejora técnica no bloqueante.
+
+## Levantar Docker y ejecutar la suite completa
+
+Crear la configuración local ignorada por Git si todavía no existe:
+
+```bash
+cp .env.test.example .env.test
+```
+
+Levantar FastAPI, PostgreSQL, WordPress y MySQL locales:
 
 ```bash
 sudo docker compose -f compose.test.yml up -d --wait
-cp .env.test.example .env.test
+sudo docker compose -f compose.test.yml ps
+```
+
+Cargar las variables locales y ejecutar la suite completa:
+
+```bash
 set -a
 source .env.test
 set +a
-.venv/bin/pytest
+.venv/bin/pytest -q
 ```
 
-La API local queda disponible en:
+Resultado validado:
 
 ```text
-http://127.0.0.1:8000
-http://127.0.0.1:8000/docs
+31 passed, 1 warning
 ```
 
-WordPress local queda disponible en:
+La misma advertencia de Starlette/httpx permanece como mejora no bloqueante.
+
+Servicios y accesos validados:
 
 ```text
-http://127.0.0.1:8080
+postgres-test          healthy   127.0.0.1:55432
+api-test               healthy   127.0.0.1:8000
+mysql-wordpress-test   healthy
+wordpress-test         healthy   127.0.0.1:8080
 ```
 
-WordPress usa una base MySQL local independiente. Sus datos, plugins y archivos
-se guardan en volúmenes Docker de pruebas.
+Comprobaciones HTTP reproducibles:
+
+```bash
+curl -sS http://127.0.0.1:8000/
+curl -sS -I http://127.0.0.1:8000/docs
+curl -sS -I http://127.0.0.1:8000/openapi.json
+curl -sS -I http://127.0.0.1:8080/
+```
+
+`/`, `/docs`, `/openapi.json` y WordPress respondieron correctamente; los tres
+endpoints de FastAPI devolvieron estado 200. WordPress fue instalado localmente.
+
+La base `provincia_libertaria_test` contiene las tablas `incidentes` y
+`reclutamiento_registros`.
 
 ## Cargar datos ficticios
-
-Este comando elimina únicamente los datos de la base local `_test` y carga un
-escenario conocido con Berisso, Ensenada y La Plata:
 
 ```bash
 sudo docker compose -f compose.test.yml --profile tools run --rm seed-test
 ```
 
-Se crean nueve reportes y tres registros de reclutamiento completamente
+Se crean nueve incidentes y tres registros de reclutamiento completamente
 ficticios. Puede repetirse cuando se necesite recuperar el escenario inicial.
 
-La prueba crea las tablas necesarias, inserta un registro dentro de una
-transacción y hace `rollback`. Si `TEST_DATABASE_URL` no está definida, se
-omite. Si el nombre de base no termina en `_test`, falla antes de conectarse.
+La prueba de integración crea las tablas necesarias, inserta un registro dentro
+de una transacción y hace `rollback`. Si `TEST_DATABASE_URL` no está definida,
+se omite. Si el nombre de base no termina en `_test`, falla antes de conectarse.
 
-Detener el entorno conservando temporalmente sus datos:
+## Detener conservando la persistencia
 
 ```bash
 sudo docker compose -f compose.test.yml down
 ```
 
-Detener todo y eliminar completamente PostgreSQL, WordPress y sus archivos
-descartables:
-
-```bash
-sudo docker compose -f compose.test.yml down -v
-```
+La persistencia fue validada después de ejecutar `down` sin `-v` y volver a
+levantar el entorno: WordPress conservó usuario, página y formulario; PostgreSQL
+conservó el incidente de prueba con foto y el archivo WebP continuó disponible.
+No usar `down -v` si se desea conservar este escenario.
