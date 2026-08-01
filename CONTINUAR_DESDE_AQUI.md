@@ -11,8 +11,10 @@ Actualizado: 2026-08-01.
 - La rama local coincidía con `origin/integracion-local-sobre-github` y el árbol
   estaba limpio antes y después de las validaciones.
 - Rama productiva: `main`; `origin/main` permanece en `abc9807`.
-- Producción continúa desplegada desde GitHub, pero falta identificar en modo
-  lectura qué commit exacto ejecuta actualmente el VPS.
+- El contrato OpenAPI público de producción coincide exactamente con
+  `origin/main` (`abc9807`). Esto identifica la línea productiva con evidencia
+  fuerte, aunque el hash interno del contenedor todavía requiere consulta de
+  solo lectura en Coolify o el VPS.
 
 ## Decisión de sincronización
 
@@ -53,10 +55,12 @@ El endpoint temporal `/debug` fue retirado de la rama local de desarrollo y se
 agregó una prueba que exige una respuesta `404`. La suite sin PostgreSQL quedó
 en 31 pruebas aprobadas, 1 omitida y 1 advertencia no bloqueante.
 
-1. Revisar `Dockerfile.txt` frente a `Dockerfile.test`.
-2. Identificar en producción, sólo en lectura, el commit o contenido exacto
-   desplegado.
-3. Comparar integración con producción sin mezclar los historiales.
+La comparación de Dockerfiles y la auditoría pública de producción están
+registradas en `AUDITORIA_PRODUCCION_LECTURA_2026-08-01.md`.
+
+1. Obtener o documentar acceso de solo lectura a Coolify/VPS.
+2. Confirmar imagen, commit y configuración del contenedor sin revelar secretos.
+3. Comparar esquema y persistencia con el entorno local sin modificar datos.
 4. Preparar un procedimiento de publicación con respaldo, comprobaciones
    posteriores y reversión.
 

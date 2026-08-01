@@ -10,8 +10,8 @@ julio de 2026.
   `origin/integracion-local-sobre-github` en `2a8b556` al comenzar las
   validaciones.
 - Rama productiva: `main`; `origin/main` está en `abc9807`.
-- Producción continúa desplegada desde GitHub. Falta verificar qué commit exacto
-  se encuentra ejecutando el VPS.
+- El OpenAPI público de producción coincide exactamente con `origin/main` en
+  `abc9807`. Falta confirmar en Coolify/VPS el hash interno del contenedor.
 - Los historiales de ambas ramas son independientes y no tienen ancestro común.
   No se deben mezclar mediante `pull`, merge o rebase automático.
 - `integracion-local-sobre-github` es la fuente de verdad técnica para el
@@ -138,11 +138,10 @@ Docker, Compose, tests, SQL, WordPress ni configuración funcional.
 
 ## Próximo paso recomendado
 
-1. Comparar `Dockerfile.txt` con `Dockerfile.test`.
-2. Inventariar producción en modo de solo lectura: versión de código, esquema,
-   configuración requerida y persistencia de archivos, sin extraer secretos.
-3. Comparar ese estado con `integracion-local-sobre-github` sin integrar los
-   historiales automáticamente.
+1. Obtener o documentar acceso de solo lectura a Coolify/VPS.
+2. Confirmar imagen, commit, configuración requerida y persistencia sin extraer
+   secretos ni datos personales.
+3. Comparar el esquema productivo con el local sin modificar la base real.
 4. Definir publicación, respaldo, comprobaciones posteriores y reversión.
 5. Agregar pruebas de caracterización de rutas críticas.
 6. Recién después iniciar la separación incremental de módulos de bajo riesgo.
