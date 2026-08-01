@@ -28,13 +28,14 @@ julio de 2026.
 Provincia Libertaria es un prototipo funcional avanzado con una línea base local
 completa y reproducible. FastAPI, PostgreSQL, WordPress, CF7, paneles, mapa,
 autenticación, fotos y persistencia fueron validados en el entorno aislado. El
-proyecto aún no tiene una línea base comparada contra lo desplegado en
-producción.
+contrato público, la imagen desplegada, el esquema PostgreSQL y la persistencia
+de imágenes fueron comparados en modo lectura contra producción.
 
 La **Etapa 4 — Validación funcional** está completada para los recorridos locales
 registrados en esta línea base. Permanecen fuera de este cierre la comparación
 productiva y otros recorridos sin cobertura suficiente.
-La **Etapa 4.5 — Orden interno de `main.py`** está planificada, pero no comenzó.
+La **Etapa 4.5 — Orden interno de `main.py`** comenzó con una primera extracción
+conservadora de configuración, normalización y autenticación/permisos.
 No existe todavía un procedimiento probado de publicación, respaldo y
 reversión.
 
@@ -59,7 +60,10 @@ reversión.
   `mysql-wordpress-test` y `wordpress-test` saludables.
 - Datos ficticios reproducibles para Berisso, Ensenada y La Plata.
 - Suite sin PostgreSQL: 30 aprobadas, 1 deseleccionada y 1 advertencia.
-- Suite completa con `TEST_DATABASE_URL`: 31 aprobadas y 1 advertencia.
+- Suite completa con `TEST_DATABASE_URL`: 31 aprobadas y 1 advertencia en la
+  línea base Docker.
+- Suite posterior a la primera modularización: 32 aprobadas, 1 omitida y 1
+  advertencia; OpenAPI canónico sin cambios frente al commit anterior.
 - FastAPI `/`, `/docs` y `/openapi.json` respondieron 200.
 - Panel de Tercera Sección, paneles de Berisso, Ensenada y La Plata, tablero,
   marcadores ficticios y autenticación administrativa validados visualmente.
@@ -74,8 +78,13 @@ implica que allí se haya corregido nada.
 
 ## Archivos importantes
 
-- `main.py`: aplicación completa. Contiene configuración, modelos, acceso a
-  datos, autenticación, imágenes, webhooks, rutas, paneles y HTML.
+- `main.py`: punto de entrada y aplicación todavía principal; conserva modelos,
+  acceso a datos, imágenes, webhooks, rutas, paneles y HTML.
+- `provincia_api/config.py`: rutas de almacenamiento, estados y distritos.
+- `provincia_api/normalization.py`: normalización y conversión ciudad/slug.
+- `provincia_api/auth.py`: autenticación HTTP Basic y permisos territoriales.
+- `tests/test_module_boundaries.py`: compatibilidad de símbolos reexportados por
+  `main.py` durante la modularización incremental.
 - `compose.test.yml`: servicios Docker del entorno local de pruebas.
 - `Dockerfile.test`: imagen local de la API.
 - `Dockerfile.txt`: definición histórica o productiva de la imagen; no asumir
@@ -98,16 +107,15 @@ locales ignorados por Git; no son código fuente.
 
 ## Estado del árbol de trabajo
 
-El árbol Git estuvo limpio antes y después de las validaciones. Los únicos
-cambios previstos en esta tarea son documentales. No se modificaron `main.py`,
-Docker, Compose, tests, SQL, WordPress ni configuración funcional.
+La primera modularización modifica sólo código Python, pruebas y documentación.
+No modifica Docker, Compose, SQL, WordPress ni configuración productiva.
 
 ## Qué NO se debe tocar
 
 - No modificar producción ni conectarse a su base para hacer pruebas.
 - No desplegar el estado local actual.
-- No modificar `main.py` hasta volver a verificar la línea base de pruebas y
-  comparar el estado de integración con producción.
+- No desplegar la modularización hasta completar pruebas, revisión independiente,
+  respaldo verificable y procedimiento de reversión.
 - No mezclar automáticamente `main` e `integracion-local-sobre-github`.
 - No ejecutar `git reset --hard`, `git clean`, `git checkout --` ni operaciones
   equivalentes sobre trabajo no revisado.
@@ -120,9 +128,10 @@ Docker, Compose, tests, SQL, WordPress ni configuración funcional.
 
 ## Riesgos actuales
 
-1. `main.py` concentra toda la aplicación en aproximadamente 2.500 líneas; su
-   modularización todavía no comenzó.
-2. Local y producción todavía no fueron comparados.
+1. `main.py` todavía concentra 2.324 líneas con modelos, SQL, imágenes, webhooks,
+   rutas, paneles y HTML; la modularización apenas comenzó.
+2. La comparación productiva de defaults, constraints, índices y secuencias
+   todavía está pendiente.
 3. Las dependencias de `requirements.txt` no tienen versiones fijadas.
 4. Las pruebas no cubren suficientemente paneles, moderación, archivos,
    edición, vistas públicas y recorridos completos.
@@ -150,8 +159,10 @@ Docker, Compose, tests, SQL, WordPress ni configuración funcional.
    secretos ni datos personales.
 3. Documentar el procedimiento actual de despliegue en Coolify.
 4. Definir publicación, respaldo, comprobaciones posteriores y reversión.
-5. Agregar pruebas de caracterización de rutas críticas.
-6. Recién después iniciar la separación incremental de módulos de bajo riesgo.
+5. Continuar la separación incremental con modelos y acceso a datos, agregando
+   primero pruebas de caracterización para cada límite.
+6. Mantener `main.py` como punto de entrada y comprobar OpenAPI y suite completa
+   después de cada extracción.
 
 ## Comandos básicos para pruebas
 

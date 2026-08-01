@@ -3,7 +3,6 @@ import uuid
 import base64
 import json
 import html
-import secrets
 from io import BytesIO
 from typing import Optional, List, Union, Any
 from urllib.parse import urlparse
@@ -11,136 +10,41 @@ from urllib.parse import urlparse
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request, Depends, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel
 from PIL import Image
 import psycopg2
 
-app = FastAPI()
+from provincia_api.auth import (
+    get_current_admin,
+    parse_admin_users,
+    puede_ver_distrito,
+    requiere_distrito,
+    security,
+)
+from provincia_api.config import (
+    DATA_DIR,
+    DISTRITOS_TERCERA,
+    ESTADOS_VALIDOS,
+    PUBLIC_UPLOAD_BASE,
+    UPLOAD_DIR,
+    UPLOAD_ROOT,
+)
+from provincia_api.normalization import (
+    ciudad_desde_slug,
+    normalizar_direccion,
+    normalizar_numero,
+    normalizar_texto,
+    slug_desde_ciudad,
+)
 
-DATA_DIR = os.getenv("DATA_DIR", "/data")
-UPLOAD_ROOT = os.path.join(DATA_DIR, "uploads")
+
+app = FastAPI()
 
 app.mount(
     "/uploads",
     StaticFiles(directory=UPLOAD_ROOT, check_dir=False),
     name="uploads"
 )
-
-UPLOAD_DIR = os.path.join(UPLOAD_ROOT, "incidentes")
-PUBLIC_UPLOAD_BASE = "/uploads/incidentes"
-
-ESTADOS_VALIDOS = ["pendiente", "publicado", "resuelto", "oculto"]
-
-security = HTTPBasic()
-
-DISTRITOS_TERCERA = [
-    ("berisso", "Berisso"),
-    ("ensenada", "Ensenada"),
-    ("la-plata", "La Plata"),
-]
-
-def parse_admin_users():
-    raw = os.getenv("ADMIN_USERS", "")
-    users = {}
-
-    for item in raw.split(","):
-        item = item.strip()
-        if not item:
-            continue
-
-        parts = item.split(":")
-        if len(parts) != 3:
-            continue
-
-        username, password, scope = parts
-        users[username.strip()] = {
-            "password": password.strip(),
-            "scope": scope.strip()
-        }
-
-    return users
-
-
-def get_current_admin(credentials: HTTPBasicCredentials = Depends(security)):
-    users = parse_admin_users()
-
-    if not users:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="ADMIN_USERS no configurado"
-        )
-
-    user_data = users.get(credentials.username)
-
-    valid_user = user_data is not None
-    valid_password = (
-        valid_user and
-        secrets.compare_digest(credentials.password, user_data["password"])
-    )
-
-    if not valid_user or not valid_password:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Usuario o contraseña inválidos",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-
-    return {
-        "username": credentials.username,
-        "scope": user_data["scope"]
-    }
-
-
-def puede_ver_distrito(admin, distrito_slug: str) -> bool:
-    scope = admin.get("scope")
-
-    if scope == "todos":
-        return True
-
-    if scope == "tercera-seccion":
-        return distrito_slug in [slug for slug, _ in DISTRITOS_TERCERA]
-
-    return scope == distrito_slug
-
-
-def requiere_distrito(distrito_slug: str, admin):
-    if not puede_ver_distrito(admin, distrito_slug):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tenés permiso para ver este distrito"
-        )
-
-
-def slug_desde_ciudad(ciudad: Optional[str]) -> str:
-    if not ciudad:
-        return "berisso"
-
-    ciudad_norm = normalizar_texto(ciudad) or ""
-
-    mapa = {
-        "Berisso": "berisso",
-        "Ensenada": "ensenada",
-        "La Plata": "la-plata",
-        "Punta Indio": "punta-indio",
-        "Magdalena": "magdalena",
-        "Quilmes": "quilmes",
-        "Avellaneda": "avellaneda",
-        "Lanús": "lanus",
-        "Lomas De Zamora": "lomas-de-zamora",
-        "Almirante Brown": "almirante-brown",
-        "Florencio Varela": "florencio-varela",
-        "Berazategui": "berazategui",
-        "Esteban Echeverría": "esteban-echeverria",
-        "Ezeiza": "ezeiza",
-        "Cañuelas": "canuelas",
-        "San Vicente": "san-vicente",
-        "Presidente Perón": "presidente-peron",
-        "La Matanza": "la-matanza",
-    }
-
-    return mapa.get(ciudad_norm, ciudad_norm.lower().replace(" ", "-"))
-
 
 
 class Registro(BaseModel):
@@ -198,53 +102,6 @@ def db_conn():
     if not database_url:
         raise HTTPException(status_code=500, detail="DATABASE_URL no configurada")
     return psycopg2.connect(database_url)
-
-
-def normalizar_texto(valor: Optional[str]) -> Optional[str]:
-    if valor is None:
-        return None
-    return " ".join(valor.strip().split()).title()
-
-
-def normalizar_direccion(valor: Optional[str]) -> Optional[str]:
-    if valor is None:
-        return None
-    limpio = " ".join(valor.strip().split())
-    return limpio if limpio else None
-
-
-def normalizar_numero(valor):
-    if valor in (None, ""):
-        return None
-    try:
-        return float(str(valor).replace(",", "."))
-    except ValueError:
-        return None
-
-
-def ciudad_desde_slug(slug: str) -> str:
-    mapa = {
-        "berisso": "Berisso",
-        "ensenada": "Ensenada",
-        "la-plata": "La Plata",
-        "punta-indio": "Punta Indio",
-        "magdalena": "Magdalena",
-        "quilmes": "Quilmes",
-        "avellaneda": "Avellaneda",
-        "lanus": "Lanús",
-        "lomas-de-zamora": "Lomas De Zamora",
-        "almirante-brown": "Almirante Brown",
-        "florencio-varela": "Florencio Varela",
-        "berazategui": "Berazategui",
-        "esteban-echeverria": "Esteban Echeverría",
-        "ezeiza": "Ezeiza",
-        "canuelas": "Cañuelas",
-        "san-vicente": "San Vicente",
-        "presidente-peron": "Presidente Perón",
-        "la-matanza": "La Matanza"
-    }
-
-    return mapa.get(slug.lower(), slug.replace("-", " ").title())
 
 
 def insertar_incidente(

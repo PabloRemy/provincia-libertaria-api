@@ -58,6 +58,11 @@ Resultado validado:
 
 La misma advertencia de Starlette/httpx permanece como mejora no bloqueante.
 
+Después de la primera modularización de `main.py`, la suite local sin conexión
+a PostgreSQL productivo quedó en `32 passed, 1 skipped, 1 warning`. Además, el
+OpenAPI canónico conservó el mismo SHA-256 antes y después del cambio:
+`a9145c77182cd8d6a977c96203d4a03cd5a3b89bca65e817b34a8a70b9b59e76`.
+
 Servicios y accesos validados:
 
 ```text
