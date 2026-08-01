@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+from fastapi.testclient import TestClient
 from starlette.staticfiles import StaticFiles
 
 
@@ -26,3 +27,14 @@ def test_home_returns_application_status():
         "status": "ok",
         "app": "Provincia Libertaria API",
     }
+
+
+def test_debug_endpoint_no_esta_expuesto():
+    client = TestClient(app)
+
+    response = client.post(
+        "/debug",
+        json={"nombre_apellido": "Dato sensible de prueba"},
+    )
+
+    assert response.status_code == 404

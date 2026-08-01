@@ -1,6 +1,6 @@
 # Continuar desde aquí
 
-Actualizado: 2026-07-14.
+Actualizado: 2026-08-01.
 
 ## Punto de partida verificado
 
@@ -49,12 +49,15 @@ La sincronización futura debe ser manual, revisada y controlada.
 
 ## Próximo paso exacto
 
-1. Revisar la exposición y necesidad de `/debug`.
-2. Revisar `Dockerfile.txt` frente a `Dockerfile.test`.
-3. Identificar en producción, sólo en lectura, el commit o contenido exacto
+El endpoint temporal `/debug` fue retirado de la rama local de desarrollo y se
+agregó una prueba que exige una respuesta `404`. La suite sin PostgreSQL quedó
+en 31 pruebas aprobadas, 1 omitida y 1 advertencia no bloqueante.
+
+1. Revisar `Dockerfile.txt` frente a `Dockerfile.test`.
+2. Identificar en producción, sólo en lectura, el commit o contenido exacto
    desplegado.
-4. Comparar integración con producción sin mezclar los historiales.
-5. Preparar un procedimiento de publicación con respaldo, comprobaciones
+3. Comparar integración con producción sin mezclar los historiales.
+4. Preparar un procedimiento de publicación con respaldo, comprobaciones
    posteriores y reversión.
 
 No modificar producción, no integrar historiales y no desplegar sin autorización

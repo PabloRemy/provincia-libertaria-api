@@ -2465,21 +2465,3 @@ def reportes_publicos(distrito_slug: str):
     """
 
     return HTMLResponse(content=html_response)
-
-
-@app.post("/debug")
-async def debug_request(request: Request):
-    content_type = request.headers.get("content-type", "")
-    print("DEBUG CONTENT-TYPE:", content_type, flush=True)
-
-    if "application/json" in content_type:
-        data = await request.json()
-        print("DEBUG JSON:", json.dumps(data, ensure_ascii=False)[:3000], flush=True)
-        return {"ok": True, "type": "json"}
-
-    form = await request.form()
-    form_data = {key: str(value)[:500] for key, value in form.items()}
-    print("DEBUG FORM KEYS:", list(form.keys()), flush=True)
-    print("DEBUG FORM DATA:", json.dumps(form_data, ensure_ascii=False)[:3000], flush=True)
-
-    return {"ok": True, "type": "form", "keys": list(form.keys())}

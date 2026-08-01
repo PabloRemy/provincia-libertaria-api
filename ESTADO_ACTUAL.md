@@ -120,7 +120,8 @@ Docker, Compose, tests, SQL, WordPress ni configuración funcional.
 3. Las dependencias de `requirements.txt` no tienen versiones fijadas.
 4. Las pruebas no cubren suficientemente paneles, moderación, archivos,
    edición, vistas públicas y recorridos completos.
-5. `/debug` es público y puede registrar payloads sensibles en los logs.
+5. La retirada local de `/debug` todavía no fue comparada ni aplicada en
+   producción.
 6. Los endpoints públicos no muestran rate limiting ni límites explícitos de
    payload.
 7. Algunas rutas devuelven detalles de excepciones internas al cliente.
@@ -137,15 +138,14 @@ Docker, Compose, tests, SQL, WordPress ni configuración funcional.
 
 ## Próximo paso recomendado
 
-1. Revisar la exposición y necesidad de `/debug`.
-2. Comparar `Dockerfile.txt` con `Dockerfile.test`.
-3. Inventariar producción en modo de solo lectura: versión de código, esquema,
+1. Comparar `Dockerfile.txt` con `Dockerfile.test`.
+2. Inventariar producción en modo de solo lectura: versión de código, esquema,
    configuración requerida y persistencia de archivos, sin extraer secretos.
-4. Comparar ese estado con `integracion-local-sobre-github` sin integrar los
+3. Comparar ese estado con `integracion-local-sobre-github` sin integrar los
    historiales automáticamente.
-5. Definir publicación, respaldo, comprobaciones posteriores y reversión.
-6. Agregar pruebas de caracterización de rutas críticas.
-7. Recién después iniciar la separación incremental de módulos de bajo riesgo.
+4. Definir publicación, respaldo, comprobaciones posteriores y reversión.
+5. Agregar pruebas de caracterización de rutas críticas.
+6. Recién después iniciar la separación incremental de módulos de bajo riesgo.
 
 ## Comandos básicos para pruebas
 
@@ -229,7 +229,7 @@ docker compose -f compose.test.yml down -v
 - [ ] Probar autenticación y permisos de todos los alcances.
 - [ ] Probar reclutamiento, GPS y fotos de extremo a extremo.
 - [x] Validar imágenes CF7 extremo a extremo en local.
-- [ ] Proteger o retirar `/debug`.
+- [x] Retirar `/debug` de la rama local y agregar una prueba de regresión.
 - [ ] Revisar exposición de errores, payloads y datos personales.
 - [ ] Preparar un respaldo verificable de base y archivos.
 - [ ] Definir migraciones y orden de despliegue.
