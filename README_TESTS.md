@@ -67,6 +67,12 @@ Después de extraer también los modelos Pydantic, la suite quedó en
 `33 passed, 1 skipped, 1 warning`; el mismo hash OpenAPI volvió a permanecer
 sin cambios.
 
+Después de extraer las funciones PostgreSQL básicas y agregar pruebas unitarias
+con conexiones falsas, la suite quedó en `39 passed, 1 skipped, 1 warning`; el
+hash OpenAPI permaneció nuevamente sin cambios. Estas pruebas cubren el camino
+exitoso de commit y cierre, pero no implican que el rollback ante excepciones ya
+esté resuelto.
+
 Servicios y accesos validados:
 
 ```text

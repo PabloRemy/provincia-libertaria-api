@@ -11,7 +11,6 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request, Dep
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from PIL import Image
-import psycopg2
 
 from provincia_api.auth import (
     get_current_admin,
@@ -27,6 +26,11 @@ from provincia_api.config import (
     PUBLIC_UPLOAD_BASE,
     UPLOAD_DIR,
     UPLOAD_ROOT,
+)
+from provincia_api.database import (
+    actualizar_estado_incidentes,
+    db_conn,
+    insertar_incidente,
 )
 from provincia_api.models import FotoBase64, Incidente, IncidenteFotoJSON, Registro
 from provincia_api.normalization import (
@@ -50,89 +54,6 @@ app.mount(
 @app.get("/")
 def home():
     return {"status": "ok", "app": "Provincia Libertaria API"}
-
-
-def db_conn():
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        raise HTTPException(status_code=500, detail="DATABASE_URL no configurada")
-    return psycopg2.connect(database_url)
-
-
-def insertar_incidente(
-    ciudad,
-    barrio,
-    categoria,
-    descripcion,
-    categoria_detalle=None,
-    direccion=None,
-    foto_url=None,
-    estado="pendiente",
-    origen="vecino",
-    fuente="formulario",
-    latitud=None,
-    longitud=None,
-):
-    ciudad = normalizar_texto(ciudad)
-    barrio = normalizar_texto(barrio)
-    categoria = normalizar_texto(categoria)
-    categoria_detalle = normalizar_direccion(categoria_detalle)
-    direccion = normalizar_direccion(direccion)
-
-    conn = db_conn()
-    cur = conn.cursor()
-
-    cur.execute("""
-        INSERT INTO incidentes
-        (ciudad, barrio, categoria, categoria_detalle, descripcion, direccion, foto_url, estado, origen, fuente, latitud, longitud)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        RETURNING id;
-    """, (
-        ciudad,
-        barrio,
-        categoria,
-        categoria_detalle,
-        descripcion,
-        direccion,
-        foto_url,
-        estado,
-        origen,
-        fuente,
-        latitud,
-        longitud
-    ))
-
-    nuevo_id = cur.fetchone()[0]
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    return nuevo_id
-
-
-def actualizar_estado_incidentes(ids: List[int], estado: str):
-    if estado not in ESTADOS_VALIDOS:
-        raise HTTPException(status_code=400, detail="Estado inválido")
-
-    if not ids:
-        return 0
-
-    conn = db_conn()
-    cur = conn.cursor()
-
-    cur.execute("""
-        UPDATE incidentes
-        SET estado = %s,
-            fecha_actualizacion = NOW()
-        WHERE id = ANY(%s);
-    """, (estado, ids))
-
-    afectados = cur.rowcount
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    return afectados
 
 
 def procesar_foto_upload(foto: UploadFile) -> Optional[str]:
