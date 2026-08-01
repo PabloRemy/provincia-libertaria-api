@@ -12,6 +12,35 @@ from provincia_api.config import PUBLIC_UPLOAD_BASE, UPLOAD_DIR
 from provincia_api.models import FotoBase64
 
 
+def _eliminar_archivo_parcial(file_path: str) -> None:
+    try:
+        os.remove(file_path)
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
+
+
+def _guardar_webp_exclusivo(image, file_path: str) -> None:
+    archivo_creado = False
+
+    try:
+        salida = open(file_path, "xb")
+        archivo_creado = True
+        with salida:
+            image.save(
+                salida,
+                "WEBP",
+                quality=55,
+                method=6,
+                optimize=True,
+            )
+    except Exception:
+        if archivo_creado:
+            _eliminar_archivo_parcial(file_path)
+        raise
+
+
 def procesar_foto_upload(foto: UploadFile) -> Optional[str]:
     if not foto or not foto.filename:
         return None
@@ -28,7 +57,7 @@ def procesar_foto_upload(foto: UploadFile) -> Optional[str]:
         image = Image.open(foto.file)
         image = image.convert("RGB")
         image.thumbnail((800, 800))
-        image.save(file_path, "WEBP", quality=55, method=6, optimize=True)
+        _guardar_webp_exclusivo(image, file_path)
 
         return f"{PUBLIC_UPLOAD_BASE}/{filename}"
 
@@ -50,7 +79,7 @@ def procesar_foto_base64(foto: FotoBase64) -> Optional[str]:
         image = Image.open(BytesIO(image_bytes))
         image = image.convert("RGB")
         image.thumbnail((800, 800))
-        image.save(file_path, "WEBP", quality=55, method=6, optimize=True)
+        _guardar_webp_exclusivo(image, file_path)
 
         return f"{PUBLIC_UPLOAD_BASE}/{filename}"
 

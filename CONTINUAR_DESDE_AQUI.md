@@ -74,6 +74,12 @@ commit `24f5482`, sin merge ni despliegue. Después se extrajeron los helpers de
 imágenes a `provincia_api/storage.py`; la suite quedó en 55 aprobadas, 1 omitida
 y 1 advertencia, con OpenAPI canónico sin cambios.
 
+El procesamiento de imágenes fue reforzado para eliminar WebP parciales cuando
+Pillow falla. Las pruebas fijan además `quality=55`, `method=6` y
+`optimize=True`. Una revisión fail-closed detectó que la primera limpieza podía
+borrar un destino preexistente; se corrigió mediante creación exclusiva y
+pruebas de colisión. La suite quedó en 63 aprobadas, 1 omitida y 1 advertencia.
+
 1. Completar la comparación estructural de PostgreSQL con defaults,
    constraints, índices y secuencias, sin consultar filas.
 2. Identificar la configuración de respaldos de base y `/data` sin mostrar
@@ -83,8 +89,8 @@ y 1 advertencia, con OpenAPI canónico sin cambios.
    posteriores y reversión.
 5. Caracterizar por separado cada bloque SQL restante antes de extraerlo; no
    mover todavía paneles ni HTML.
-6. Endurecer el procesamiento de imágenes para retirar archivos parciales si
-   Pillow falla después de crear el destino.
+6. Separar helpers de payloads de webhook sólo después de caracterizar JSON,
+   formularios y archivos, manteniendo el endpoint en `main.py`.
 
 No modificar producción, no integrar historiales y no desplegar sin autorización
 expresa.

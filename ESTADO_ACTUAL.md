@@ -40,7 +40,9 @@ Pydantic. También se extrajeron las tres funciones básicas de acceso PostgreSQ
 para conexión, inserción de incidentes y actualización de estado. Las dos
 operaciones transaccionales extraídas ahora intentan rollback y cierre completo
 ante fallos sin ocultar la excepción original. Los helpers de procesamiento y
-resolución de imágenes también fueron separados en un módulo propio.
+resolución de imágenes también fueron separados en un módulo propio y eliminan
+archivos parciales si Pillow falla durante la escritura. El destino se crea de
+forma exclusiva para no sobrescribir ni borrar archivos preexistentes.
 No existe todavía un procedimiento probado de publicación, respaldo y
 reversión.
 
@@ -67,7 +69,7 @@ reversión.
 - Suite sin PostgreSQL: 30 aprobadas, 1 deseleccionada y 1 advertencia.
 - Suite completa con `TEST_DATABASE_URL`: 31 aprobadas y 1 advertencia en la
   línea base Docker.
-- Suite posterior a la extracción de almacenamiento: 55 aprobadas, 1 omitida y 1
+- Suite posterior al refuerzo de almacenamiento: 63 aprobadas, 1 omitida y 1
   advertencia; OpenAPI canónico sin cambios frente al commit anterior.
 - FastAPI `/`, `/docs` y `/openapi.json` respondieron 200.
 - Panel de Tercera Sección, paneles de Berisso, Ensenada y La Plata, tablero,
@@ -172,8 +174,8 @@ No modifica Docker, Compose, SQL, WordPress ni configuración productiva.
 4. Definir publicación, respaldo, comprobaciones posteriores y reversión.
 5. Aplicar el mismo ciclo de caracterización a cada bloque SQL restante antes
    de moverlo; no asumir que el refuerzo cubre consultas aún embebidas en rutas.
-6. Agregar limpieza de archivos parciales ante fallos de procesamiento de
-   imágenes, en un commit de robustez separado.
+6. Caracterizar y separar helpers de payloads de webhook sin mover todavía el
+   endpoint ni alterar los monkeypatches CF7.
 7. Mantener `main.py` como punto de entrada y comprobar OpenAPI y suite completa
    después de cada extracción.
 

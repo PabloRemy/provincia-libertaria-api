@@ -83,6 +83,13 @@ conversión WebP, dimensiones máximas, Base64, URLs externas y rutas públicas.
 La suite quedó en `55 passed, 1 skipped, 1 warning`, sin archivos de prueba
 residuales y con el mismo hash OpenAPI.
 
+El refuerzo posterior simula fallos de Pillow después de crear un archivo
+parcial y exige su eliminación tanto para uploads como para Base64. También fija
+los parámetros de compresión WebP. La suite quedó en
+`63 passed, 1 skipped, 1 warning`. La escritura usa creación exclusiva y las
+pruebas verifican que una colisión no sobrescriba ni elimine el archivo anterior,
+además de conservar el error original si falla la limpieza.
+
 Servicios y accesos validados:
 
 ```text
