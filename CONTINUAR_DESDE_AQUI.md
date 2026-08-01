@@ -11,10 +11,10 @@ Actualizado: 2026-08-01.
 - La rama local coincidía con `origin/integracion-local-sobre-github` y el árbol
   estaba limpio antes y después de las validaciones.
 - Rama productiva: `main`; `origin/main` permanece en `abc9807`.
-- El contrato OpenAPI público de producción coincide exactamente con
-  `origin/main` (`abc9807`). Esto identifica la línea productiva con evidencia
-  fuerte, aunque el hash interno del contenedor todavía requiere consulta de
-  solo lectura en Coolify o el VPS.
+- El contrato OpenAPI público y la etiqueta de la imagen productiva confirman
+  `origin/main` (`abc9807bba2974ecd1bab36aa80166de3c66fbdf`).
+- Existe un acceso SSH restringido mediante el alias local
+  `provincia-vps-auditoria`; sólo ejecuta un informe fijo sin secretos.
 
 ## Decisión de sincronización
 
@@ -58,9 +58,10 @@ en 31 pruebas aprobadas, 1 omitida y 1 advertencia no bloqueante.
 La comparación de Dockerfiles y la auditoría pública de producción están
 registradas en `AUDITORIA_PRODUCCION_LECTURA_2026-08-01.md`.
 
-1. Obtener o documentar acceso de solo lectura a Coolify/VPS.
-2. Confirmar imagen, commit y configuración del contenedor sin revelar secretos.
-3. Comparar esquema y persistencia con el entorno local sin modificar datos.
+1. Definir si se amplía el informe restringido para consultar nombres de
+   variables, esquema y respaldo sin mostrar valores ni datos personales.
+2. Comparar esquema y persistencia con el entorno local sin modificar datos.
+3. Documentar el procedimiento actual de despliegue en Coolify.
 4. Preparar un procedimiento de publicación con respaldo, comprobaciones
    posteriores y reversión.
 

@@ -10,8 +10,10 @@ julio de 2026.
   `origin/integracion-local-sobre-github` en `2a8b556` al comenzar las
   validaciones.
 - Rama productiva: `main`; `origin/main` está en `abc9807`.
-- El OpenAPI público de producción coincide exactamente con `origin/main` en
-  `abc9807`. Falta confirmar en Coolify/VPS el hash interno del contenedor.
+- El OpenAPI público y la etiqueta de la imagen productiva confirman
+  `origin/main` en `abc9807bba2974ecd1bab36aa80166de3c66fbdf`.
+- Se verificó un acceso SSH dedicado y restringido que sólo ejecuta un informe
+  de metadatos del contenedor sin mostrar secretos.
 - Los historiales de ambas ramas son independientes y no tienen ancestro común.
   No se deben mezclar mediante `pull`, merge o rebase automático.
 - `integracion-local-sobre-github` es la fuente de verdad técnica para el
@@ -138,10 +140,10 @@ Docker, Compose, tests, SQL, WordPress ni configuración funcional.
 
 ## Próximo paso recomendado
 
-1. Obtener o documentar acceso de solo lectura a Coolify/VPS.
-2. Confirmar imagen, commit, configuración requerida y persistencia sin extraer
-   secretos ni datos personales.
-3. Comparar el esquema productivo con el local sin modificar la base real.
+1. Definir si se amplía el informe restringido para consultar nombres de
+   variables, esquema y respaldo sin extraer valores ni datos personales.
+2. Comparar el esquema productivo con el local sin modificar la base real.
+3. Documentar el procedimiento actual de despliegue en Coolify.
 4. Definir publicación, respaldo, comprobaciones posteriores y reversión.
 5. Agregar pruebas de caracterización de rutas críticas.
 6. Recién después iniciar la separación incremental de módulos de bajo riesgo.

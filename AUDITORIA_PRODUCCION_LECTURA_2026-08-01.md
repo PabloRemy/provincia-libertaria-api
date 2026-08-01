@@ -38,11 +38,9 @@ Huella SHA-256 del OpenAPI público canónico:
 `63023b8e3bf828273dc1018190bdd2d0005c26cc002392bbca95568e0e708939`
 
 La coincidencia exacta demuestra que el **contrato API actualmente publicado**
-corresponde a `origin/main`. Es evidencia fuerte de que producción usa esa línea
-de código, pero no prueba por sí sola el hash interno de la imagen o contenedor:
-otro artefacto con el mismo contrato podría producir la misma huella. Para afirmar
-el commit desplegado con certeza absoluta todavía hace falta consultar Coolify o
-el VPS en modo lectura.
+corresponde a `origin/main`. La consulta posterior al contenedor confirmó además
+que la imagen desplegada está etiquetada con el commit completo
+`abc9807bba2974ecd1bab36aa80166de3c66fbdf`.
 
 ## Hallazgo de seguridad
 
@@ -73,27 +71,60 @@ copia de `main.py` y comando Uvicorn. Sólo agrega:
 Estas diferencias no cambian HTML, CSS, WordPress ni el aspecto visual del sitio.
 `EXPOSE` documenta el puerto de la imagen, pero no publica puertos por sí mismo.
 
+## Acceso SSH restringido verificado
+
+Se creó en el VPS el usuario `auditor_pl`, sin contraseña operativa y sin
+pertenencia al grupo `docker`. La clave autorizada tiene `restrict` y un comando
+forzado. El único `sudo` permitido es:
+
+`/usr/local/sbin/provincia-audit-readonly`
+
+El script pertenece a `root`, no es modificable por el auditor y devuelve sólo
+metadatos filtrados. No muestra variables de entorno ni contenido de volúmenes.
+Desde Desk se configuró el alias local `provincia-vps-auditoria` con una clave
+dedicada que no se guarda en el repositorio.
+
+Se verificó que:
+
+- la conexión funciona sin contraseña;
+- el usuario no recibe una terminal interactiva;
+- al solicitar otro comando, por ejemplo `id`, el servidor lo ignora y ejecuta
+  nuevamente el informe fijo;
+- el acceso no permite despliegues, reinicios ni comandos Docker arbitrarios.
+
+## Contenedor productivo confirmado
+
+- Servidor: `srv886973`.
+- Contenedor: `n85p5qn4eo94demg4mnbfu3m-132351845310`.
+- Imagen: `n85p5qn4eo94demg4mnbfu3m:abc9807bba2974ecd1bab36aa80166de3c66fbdf`.
+- ID de imagen: `sha256:5ab53fcf30b144d908880375d8e8615dcbe8d8a9ee45e0262d67fdcb0f2e57a5`.
+- Creado e iniciado: 2026-06-19.
+- Estado observado: en ejecución, sin reinicios registrados.
+- Política de reinicio: `unless-stopped`.
+- Montaje: bind hacia `/data`, con escritura habilitada para la aplicación.
+- Sistema de imagen: `linux/amd64`.
+
+El permiso de escritura del montaje corresponde al contenedor productivo; no
+implica que el usuario auditor pueda escribir en `/data`.
+
 ## Límites de esta auditoría
 
-Sin una entrada documentada a Coolify o al VPS no se verificaron todavía:
+Todavía no se verificaron:
 
-- hash o etiqueta exacta de la imagen en ejecución;
-- fecha de creación y configuración del contenedor;
-- variables de entorno, mostrando únicamente nombres y nunca valores;
+- nombres de variables requeridas, sin mostrar valores;
 - versión del esquema PostgreSQL;
-- ubicación y persistencia efectiva de uploads;
+- persistencia efectiva y respaldo de uploads;
 - procedimiento actual de despliegue y reversión.
 
 ## Próximo paso seguro
 
-Obtener o documentar el acceso de solo lectura a Coolify/VPS y consultar:
+Antes de ampliar la auditoría, decidir explícitamente si el comando restringido
+debe incorporar nuevas consultas. Las próximas candidatas son:
 
-1. identificación del contenedor o servicio;
-2. imagen, etiqueta y fecha de creación;
-3. origen Git y commit, si Coolify lo registra;
-4. nombres de variables requeridas sin revelar valores;
-5. montajes y volúmenes sin leer datos personales;
-6. estado de salud y logs técnicos mínimos, sin extraer payloads.
+1. nombres de variables requeridas sin revelar valores;
+2. versión y estructura del esquema PostgreSQL sin consultar filas;
+3. estado de respaldo de `/data` sin leer datos personales;
+4. procedimiento de despliegue y reversión en Coolify.
 
 No aplicar el commit local, no retirar `/debug` de producción y no reiniciar
 servicios hasta contar con respaldo verificable, comprobaciones posteriores,
