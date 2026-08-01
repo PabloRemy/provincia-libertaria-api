@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONTAINER='n85p5qn4eo94demg4mnbfu3m-132351845310'
+
+printf '%s\n' '=== Provincia Libertaria: auditoría ampliada de solo lectura ==='
+printf 'Version_informe: 2\n'
+printf 'Fecha_UTC: '
+date -u '+%Y-%m-%d %H:%M:%S UTC'
+printf 'Servidor: '
+hostname
+
+printf '%s\n' '--- Contenedor ---'
+docker ps \
+  --filter "name=^/${CONTAINER}$" \
+  --format 'Nombre={{.Names}} Imagen={{.Image}} Estado={{.Status}}'
+
+docker inspect --type container \
+  --format 'ID={{.Id}}
+Nombre={{.Name}}
+Imagen_configurada={{.Config.Image}}
+Imagen_ID={{.Image}}
+Creado={{.Created}}
+Estado={{.State.Status}}
+Iniciado={{.State.StartedAt}}
+Reinicios={{.RestartCount}}
+Politica_reinicio={{.HostConfig.RestartPolicy.Name}}' \
+  "$CONTAINER"
+
+printf '%s\n' '--- Nombres de variables (valores ocultos) ---'
+docker exec "$CONTAINER" python -c \
+  'import os; print("\n".join(sorted(os.environ.keys())))'
+
+printf '%s\n' '--- Montajes ---'
+docker inspect --type container \
+  --format '{{range .Mounts}}Tipo={{.Type}} Origen={{.Source}} Destino={{.Destination}} Escritura={{.RW}}{{println}}{{end}}' \
+  "$CONTAINER"
+
+DATA_SOURCE="$(docker inspect --type container \
+  --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}' \
+  "$CONTAINER")"
+
+printf '%s\n' '--- Metadatos de /data (sin nombres ni contenido) ---'
+if [ -n "$DATA_SOURCE" ] && [ -d "$DATA_SOURCE" ]; then
+  printf 'Bytes_totales='
+  du -sb -- "$DATA_SOURCE" | cut -f1
+  printf 'Archivos_totales='
+  find "$DATA_SOURCE" -xdev -type f -printf '1\n' | wc -l
+  printf 'Directorios_totales='
+  find "$DATA_SOURCE" -xdev -type d -printf '1\n' | wc -l
+  LATEST_EPOCH="$(find "$DATA_SOURCE" -xdev -type f -printf '%T@\n' \
+    | sort -n | tail -1 | cut -d. -f1)"
+  if [ -n "$LATEST_EPOCH" ]; then
+    printf 'Ultima_modificacion_UTC='
+    date -u -d "@$LATEST_EPOCH" '+%Y-%m-%d %H:%M:%S UTC'
+  else
+    printf '%s\n' 'Ultima_modificacion_UTC=sin archivos'
+  fi
+  df -P -- "$DATA_SOURCE" | awk 'NR==2 {print "Filesystem_bytes=" $2*1024; print "Filesystem_disponible_bytes=" $4*1024; print "Filesystem_uso=" $5}'
+else
+  printf '%s\n' 'DATA_SOURCE=no disponible'
+fi
+
+printf '%s\n' '--- Esquema PostgreSQL (sin filas) ---'
+docker exec -i "$CONTAINER" python - <<'PY'
+import os
+import sys
+
+import psycopg2
+
+try:
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        print("ESQUEMA_ERROR=DATABASE_URL no configurada", file=sys.stderr)
+        sys.exit(20)
+
+    conn = psycopg2.connect(database_url)
+    conn.set_session(readonly=True, autocommit=True)
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT table_schema, table_name, column_name, data_type, is_nullable
+        FROM information_schema.columns
+        WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+        ORDER BY table_schema, table_name, ordinal_position;
+    """)
+    rows = cur.fetchall()
+    print(f"COLUMNAS_TOTALES={len(rows)}")
+    for schema, table, column, data_type, nullable in rows:
+        print(
+            f"COLUMNA schema={schema} tabla={table} "
+            f"nombre={column} tipo={data_type} nullable={nullable}"
+        )
+
+    cur.execute("""
+        SELECT table_schema, table_name, table_type
+        FROM information_schema.tables
+        WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+        ORDER BY table_schema, table_name;
+    """)
+    tables = cur.fetchall()
+    print(f"TABLAS_TOTALES={len(tables)}")
+    for schema, table, table_type in tables:
+        print(f"TABLA schema={schema} nombre={table} tipo={table_type}")
+
+    cur.close()
+    conn.close()
+except Exception:
+    print(
+        "ESQUEMA_ERROR=consulta de solo lectura fallida; detalles ocultos",
+        file=sys.stderr,
+    )
+    sys.exit(21)
+PY
+
+IMAGE_ID="$(docker inspect --type container --format '{{.Image}}' "$CONTAINER")"
+
+printf '%s\n' '--- Imagen ---'
+docker image inspect \
+  --format 'ID={{.Id}}
+Etiquetas={{json .RepoTags}}
+Creada={{.Created}}
+Sistema={{.Os}}/{{.Architecture}}
+Tamano={{.Size}}' \
+  "$IMAGE_ID"
+
+printf '%s\n' '--- Respaldo ---'
+printf '%s\n' 'Estado_respaldo=no verificado por este informe'
+printf '%s\n' '=== Fin de auditoría ampliada ==='

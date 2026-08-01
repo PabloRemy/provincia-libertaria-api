@@ -58,9 +58,10 @@ en 31 pruebas aprobadas, 1 omitida y 1 advertencia no bloqueante.
 La comparación de Dockerfiles y la auditoría pública de producción están
 registradas en `AUDITORIA_PRODUCCION_LECTURA_2026-08-01.md`.
 
-1. Definir si se amplía el informe restringido para consultar nombres de
-   variables, esquema y respaldo sin mostrar valores ni datos personales.
-2. Comparar esquema y persistencia con el entorno local sin modificar datos.
+1. Completar la comparación estructural de PostgreSQL con defaults,
+   constraints, índices y secuencias, sin consultar filas.
+2. Identificar la configuración de respaldos de base y `/data` sin mostrar
+   secretos ni datos personales.
 3. Documentar el procedimiento actual de despliegue en Coolify.
 4. Preparar un procedimiento de publicación con respaldo, comprobaciones
    posteriores y reversión.

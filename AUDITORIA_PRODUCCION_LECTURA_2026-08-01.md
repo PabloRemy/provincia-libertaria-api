@@ -1,11 +1,17 @@
 # Auditoría de producción en modo lectura — 2026-08-01
 
-## Alcance y seguridad
+## Alcance y seguridad de la auditoría pública inicial
 
-Esta auditoría se realizó exclusivamente mediante consultas públicas y comandos
-Git locales de lectura. No se enviaron formularios, no se ejecutaron solicitudes
-POST, no se accedió a bases de datos, no se modificaron archivos del VPS y no se
-reiniciaron ni desplegaron servicios.
+La primera etapa se realizó exclusivamente mediante consultas públicas y
+comandos Git locales de lectura. En esa etapa no se enviaron formularios, no se
+ejecutaron solicitudes POST, no se accedió a bases de datos y no se modificaron
+archivos del VPS.
+
+Las etapas SSH posteriores instalaron y actualizaron únicamente el script de
+auditoría restringida, conservando copias reversibles. Ese script consultó
+metadatos del contenedor, filesystem y estructura PostgreSQL en una conexión
+marcada `READ ONLY`. En ninguna etapa se reiniciaron ni desplegaron servicios,
+se modificaron datos de negocio o se alteró el sitio público.
 
 ## Superficie pública observada
 
@@ -107,24 +113,107 @@ Se verificó que:
 El permiso de escritura del montaje corresponde al contenedor productivo; no
 implica que el usuario auditor pueda escribir en `/data`.
 
+## Auditoría ampliada — versión 2
+
+El comando restringido fue ampliado y verificado desde Desk. La copia versionada
+se encuentra en `scripts/provincia-audit-readonly`; el archivo instalado en el
+VPS posee SHA-256:
+
+`ff04844112a9904bf0763f196f8ebdf46b347f6bf4292c21a7e97170440cfdab`
+
+Durante la instalación se conservó la versión anterior en
+`/root/provincia-audit-readonly.v1.20260801`. La primera ejecución de la versión
+2 se interrumpió después de enumerar variables porque `pipefail` propagó el
+estado de una última línea vacía. No alcanzó las consultas de `/data` ni de base.
+La condición fue corregida, validada por hash y ejecutada nuevamente con éxito.
+
+Una revisión independiente posterior detectó que serializar entradas completas
+`KEY=VALUE` antes de recortar el nombre podía filtrar parte de un valor
+multilínea. La versión final obtiene directamente `os.environ.keys()` dentro del
+contenedor, sin imprimir valores. La misma revisión señaló que los errores de
+PostgreSQL no debían terminar con estado exitoso: ahora la ausencia de
+`DATABASE_URL` devuelve código 20 y cualquier fallo genérico de conexión o
+consulta devuelve código 21, manteniendo ocultos los detalles sensibles.
+
+La versión final fue instalada mediante un parche con simulación previa,
+conservando la versión 2 en
+`/root/provincia-audit-readonly.v2.20260801`. La ejecución remota posterior
+terminó con código 0 y el informe completo.
+
+### Configuración requerida
+
+Se enumeraron sólo nombres de variables; ningún valor fue extraído. Las variables
+relevantes de la aplicación y Coolify incluyen:
+
+- `ADMIN_USERS`;
+- `DATABASE_URL`;
+- `COOLIFY_BRANCH`;
+- `COOLIFY_CONTAINER_NAME`;
+- `COOLIFY_FQDN`;
+- `COOLIFY_RESOURCE_UUID`;
+- `COOLIFY_URL`;
+- `SOURCE_COMMIT`;
+- `HOST` y `PORT`.
+
+También existen variables propias de la imagen oficial de Python. Su presencia
+no implica que sea necesario copiarlas a documentación o configuración local.
+
+### Persistencia de imágenes
+
+- Origen del bind mount: `/data/incidentes-fotos`.
+- Destino dentro del contenedor: `/data`.
+- Tamaño observado: 2.072.952 bytes, aproximadamente 1,98 MiB.
+- Archivos: 28.
+- Directorios: 3.
+- Última modificación observada: 2026-06-30 02:22:05 UTC.
+- Filesystem: aproximadamente 95,82 GiB totales y 71,05 GiB disponibles; uso
+  informado del 26 %.
+
+No se mostraron nombres ni contenido de archivos. Estos metadatos prueban la
+persistencia actual, pero no prueban la existencia de una copia de respaldo.
+
+### Esquema PostgreSQL productivo
+
+La consulta se ejecutó dentro del contenedor mediante una conexión PostgreSQL
+marcada `READ ONLY` y consultó exclusivamente `information_schema`. No se
+consultaron filas de negocio.
+
+- Esquema: `public`.
+- Tablas: `incidentes` y `reclutamiento_registros`.
+- Columnas totales: 25.
+
+Diferencias observadas frente a `sql/test_schema.sql`:
+
+1. Producción incluye `reclutamiento_registros.origen`; el esquema local no.
+2. Los identificadores productivos aparecen como `integer`; el esquema local
+   declara `BIGSERIAL`.
+3. `incidentes.ciudad`, `barrio` y `categoria` aparecen como
+   `character varying`; local los declara `TEXT`.
+4. `incidentes.latitud` y `longitud` aparecen como `numeric`; local usa
+   `DOUBLE PRECISION`.
+5. En producción `incidentes.estado`, `fecha_reporte` y `fecha_actualizacion`
+   admiten nulos según `information_schema`; local los declara `NOT NULL`.
+6. En producción `reclutamiento_registros.fecha_registro` admite nulos; local lo
+   declara `NOT NULL`.
+
+Esta auditoría no consultó defaults, constraints, índices ni secuencias. Por eso
+no corresponde preparar una migración hasta completar esa comparación.
+
 ## Límites de esta auditoría
 
 Todavía no se verificaron:
 
-- nombres de variables requeridas, sin mostrar valores;
-- versión del esquema PostgreSQL;
-- persistencia efectiva y respaldo de uploads;
-- procedimiento actual de despliegue y reversión.
+- defaults, constraints, índices y secuencias PostgreSQL;
+- existencia, frecuencia e integridad de respaldos de base y uploads;
+- procedimiento actual de despliegue y reversión en Coolify.
 
 ## Próximo paso seguro
 
-Antes de ampliar la auditoría, decidir explícitamente si el comando restringido
-debe incorporar nuevas consultas. Las próximas candidatas son:
-
-1. nombres de variables requeridas sin revelar valores;
-2. versión y estructura del esquema PostgreSQL sin consultar filas;
-3. estado de respaldo de `/data` sin leer datos personales;
-4. procedimiento de despliegue y reversión en Coolify.
+1. Extender la consulta estructural a defaults, constraints, índices y
+   secuencias, sin consultar filas.
+2. Identificar en Coolify la configuración de respaldos sin mostrar secretos.
+3. Diseñar y ensayar un respaldo verificable antes de cualquier despliegue.
+4. Documentar comprobaciones posteriores y reversión.
 
 No aplicar el commit local, no retirar `/debug` de producción y no reiniciar
 servicios hasta contar con respaldo verificable, comprobaciones posteriores,

@@ -14,6 +14,10 @@ julio de 2026.
   `origin/main` en `abc9807bba2974ecd1bab36aa80166de3c66fbdf`.
 - Se verificó un acceso SSH dedicado y restringido que sólo ejecuta un informe
   de metadatos del contenedor sin mostrar secretos.
+- La auditoría ampliada confirmó nombres de configuración sin valores, el bind
+  mount `/data/incidentes-fotos` y dos tablas productivas con 25 columnas.
+- El esquema productivo difiere de `sql/test_schema.sql` en tipos, nulabilidad y
+  la columna `reclutamiento_registros.origen`.
 - Los historiales de ambas ramas son independientes y no tienen ancestro común.
   No se deben mezclar mediante `pull`, merge o rebase automático.
 - `integracion-local-sobre-github` es la fuente de verdad técnica para el
@@ -140,9 +144,10 @@ Docker, Compose, tests, SQL, WordPress ni configuración funcional.
 
 ## Próximo paso recomendado
 
-1. Definir si se amplía el informe restringido para consultar nombres de
-   variables, esquema y respaldo sin extraer valores ni datos personales.
-2. Comparar el esquema productivo con el local sin modificar la base real.
+1. Completar la comparación PostgreSQL de defaults, constraints, índices y
+   secuencias sin consultar filas.
+2. Identificar la configuración de respaldos de base y uploads sin extraer
+   secretos ni datos personales.
 3. Documentar el procedimiento actual de despliegue en Coolify.
 4. Definir publicación, respaldo, comprobaciones posteriores y reversión.
 5. Agregar pruebas de caracterización de rutas críticas.
