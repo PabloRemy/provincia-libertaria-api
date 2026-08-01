@@ -1,16 +1,11 @@
 import os
-import uuid
-import base64
 import json
 import html
-from io import BytesIO
-from typing import Optional, List, Union, Any
-from urllib.parse import urlparse
+from typing import Optional, List, Any
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request, Depends, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
-from PIL import Image
 
 from provincia_api.auth import (
     get_current_admin,
@@ -40,6 +35,12 @@ from provincia_api.normalization import (
     normalizar_texto,
     slug_desde_ciudad,
 )
+from provincia_api.storage import (
+    procesar_foto_base64,
+    procesar_foto_upload,
+    procesar_foto_webhook,
+    url_publica_foto,
+)
 
 
 app = FastAPI()
@@ -54,73 +55,6 @@ app.mount(
 @app.get("/")
 def home():
     return {"status": "ok", "app": "Provincia Libertaria API"}
-
-
-def procesar_foto_upload(foto: UploadFile) -> Optional[str]:
-    if not foto or not foto.filename:
-        return None
-
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-    if foto.content_type not in ["image/jpeg", "image/png", "image/webp"]:
-        raise HTTPException(status_code=400, detail="Formato de imagen no permitido")
-
-    filename = f"{uuid.uuid4().hex}.webp"
-    file_path = os.path.join(UPLOAD_DIR, filename)
-
-    try:
-        image = Image.open(foto.file)
-        image = image.convert("RGB")
-        image.thumbnail((800, 800))
-        image.save(file_path, "WEBP", quality=55, method=6, optimize=True)
-
-        return f"{PUBLIC_UPLOAD_BASE}/{filename}"
-
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"No se pudo procesar la imagen: {str(e)}")
-
-
-def procesar_foto_base64(foto: FotoBase64) -> Optional[str]:
-    if not foto or not foto.content:
-        return None
-
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-    filename = f"{uuid.uuid4().hex}.webp"
-    file_path = os.path.join(UPLOAD_DIR, filename)
-
-    try:
-        image_bytes = base64.b64decode(foto.content)
-        image = Image.open(BytesIO(image_bytes))
-        image = image.convert("RGB")
-        image.thumbnail((800, 800))
-        image.save(file_path, "WEBP", quality=55, method=6, optimize=True)
-
-        return f"{PUBLIC_UPLOAD_BASE}/{filename}"
-
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"No se pudo procesar la imagen base64: {str(e)}")
-
-
-def procesar_foto_webhook(foto: Optional[Union[FotoBase64, str]]) -> Optional[str]:
-    if foto is None:
-        return None
-
-    if isinstance(foto, dict):
-        return procesar_foto_base64(FotoBase64.model_validate(foto))
-
-    if isinstance(foto, FotoBase64):
-        return procesar_foto_base64(foto)
-
-    foto_url = foto.strip()
-    if not foto_url:
-        return None
-
-    parsed = urlparse(foto_url)
-    if parsed.scheme not in ("http", "https") or not parsed.netloc:
-        raise HTTPException(status_code=400, detail="URL de foto inválida")
-
-    return foto_url
 
 
 def limpiar_payload_webhook(payload: dict[str, Any]) -> dict[str, Any]:
@@ -191,17 +125,6 @@ def guardar_incidente_con_foto_json(
     )
 
     return {"ok": True, "id": nuevo_id, "foto_url": foto_url}
-
-
-def url_publica_foto(foto_url: Optional[str]) -> Optional[str]:
-    if not foto_url:
-        return None
-
-    parsed = urlparse(foto_url)
-    if parsed.scheme in ("http", "https") and parsed.netloc:
-        return foto_url
-
-    return f"/foto/{foto_url.split('/')[-1]}"
 
 
 @app.get("/foto/{nombre}")

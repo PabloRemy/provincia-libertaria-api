@@ -69,6 +69,11 @@ rollback y cierre defensivo ante fallos de cursor, ejecución, lectura o commit.
 Las fallas durante la propia limpieza no ocultan la excepción original. La
 suite posterior quedó en 47 aprobadas, 1 omitida y 1 advertencia.
 
+La rama `integracion-local-sobre-github` fue respaldada en `origin` hasta el
+commit `24f5482`, sin merge ni despliegue. Después se extrajeron los helpers de
+imágenes a `provincia_api/storage.py`; la suite quedó en 55 aprobadas, 1 omitida
+y 1 advertencia, con OpenAPI canónico sin cambios.
+
 1. Completar la comparación estructural de PostgreSQL con defaults,
    constraints, índices y secuencias, sin consultar filas.
 2. Identificar la configuración de respaldos de base y `/data` sin mostrar
@@ -78,6 +83,8 @@ suite posterior quedó en 47 aprobadas, 1 omitida y 1 advertencia.
    posteriores y reversión.
 5. Caracterizar por separado cada bloque SQL restante antes de extraerlo; no
    mover todavía paneles ni HTML.
+6. Endurecer el procesamiento de imágenes para retirar archivos parciales si
+   Pillow falla después de crear el destino.
 
 No modificar producción, no integrar historiales y no desplegar sin autorización
 expresa.

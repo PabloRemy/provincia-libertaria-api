@@ -39,7 +39,8 @@ conservadoras de configuración, normalización, autenticación/permisos y model
 Pydantic. También se extrajeron las tres funciones básicas de acceso PostgreSQL
 para conexión, inserción de incidentes y actualización de estado. Las dos
 operaciones transaccionales extraídas ahora intentan rollback y cierre completo
-ante fallos sin ocultar la excepción original.
+ante fallos sin ocultar la excepción original. Los helpers de procesamiento y
+resolución de imágenes también fueron separados en un módulo propio.
 No existe todavía un procedimiento probado de publicación, respaldo y
 reversión.
 
@@ -66,7 +67,7 @@ reversión.
 - Suite sin PostgreSQL: 30 aprobadas, 1 deseleccionada y 1 advertencia.
 - Suite completa con `TEST_DATABASE_URL`: 31 aprobadas y 1 advertencia en la
   línea base Docker.
-- Suite posterior al refuerzo transaccional: 47 aprobadas, 1 omitida y 1
+- Suite posterior a la extracción de almacenamiento: 55 aprobadas, 1 omitida y 1
   advertencia; OpenAPI canónico sin cambios frente al commit anterior.
 - FastAPI `/`, `/docs` y `/openapi.json` respondieron 200.
 - Panel de Tercera Sección, paneles de Berisso, Ensenada y La Plata, tablero,
@@ -91,6 +92,8 @@ implica que allí se haya corregido nada.
   fotografías JSON/Base64.
 - `provincia_api/database.py`: conexión PostgreSQL, inserción normalizada de
   incidentes y actualización de estados.
+- `provincia_api/storage.py`: validación, conversión WebP, Base64 y resolución de
+  URLs públicas de fotografías.
 - `tests/test_module_boundaries.py`: compatibilidad de símbolos reexportados por
   `main.py` durante la modularización incremental.
 - `compose.test.yml`: servicios Docker del entorno local de pruebas.
@@ -136,8 +139,8 @@ No modifica Docker, Compose, SQL, WordPress ni configuración productiva.
 
 ## Riesgos actuales
 
-1. `main.py` todavía concentra 2.200 líneas con SQL de endpoints, imágenes,
-   webhooks, rutas, paneles y HTML; la modularización sigue siendo inicial.
+1. `main.py` todavía concentra 2.123 líneas con SQL de endpoints, rutas de
+   imágenes, webhooks, paneles y HTML; la modularización sigue siendo inicial.
 2. La comparación productiva de defaults, constraints, índices y secuencias
    todavía está pendiente.
 3. Las dependencias de `requirements.txt` no tienen versiones fijadas.
@@ -169,7 +172,9 @@ No modifica Docker, Compose, SQL, WordPress ni configuración productiva.
 4. Definir publicación, respaldo, comprobaciones posteriores y reversión.
 5. Aplicar el mismo ciclo de caracterización a cada bloque SQL restante antes
    de moverlo; no asumir que el refuerzo cubre consultas aún embebidas en rutas.
-6. Mantener `main.py` como punto de entrada y comprobar OpenAPI y suite completa
+6. Agregar limpieza de archivos parciales ante fallos de procesamiento de
+   imágenes, en un commit de robustez separado.
+7. Mantener `main.py` como punto de entrada y comprobar OpenAPI y suite completa
    después de cada extracción.
 
 ## Comandos básicos para pruebas

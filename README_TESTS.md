@@ -77,6 +77,12 @@ el propio rollback o cierre. La suite quedó en `47 passed, 1 skipped, 1 warning
 Estas garantías corresponden a las funciones ya extraídas y no a todo el SQL
 que todavía permanece dentro de las rutas.
 
+La extracción posterior de almacenamiento agregó pruebas con imágenes reales
+generadas en memoria y directorios temporales: MIME admitido/rechazado,
+conversión WebP, dimensiones máximas, Base64, URLs externas y rutas públicas.
+La suite quedó en `55 passed, 1 skipped, 1 warning`, sin archivos de prueba
+residuales y con el mismo hash OpenAPI.
+
 Servicios y accesos validados:
 
 ```text
