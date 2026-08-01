@@ -15,6 +15,19 @@ def db_conn():
     return psycopg2.connect(database_url)
 
 
+def _rollback_y_cerrar_sin_ocultar_error(conn, cur):
+    acciones = [conn.rollback]
+    if cur is not None:
+        acciones.append(cur.close)
+    acciones.append(conn.close)
+
+    for accion in acciones:
+        try:
+            accion()
+        except Exception:
+            pass
+
+
 def insertar_incidente(
     ciudad,
     barrio,
@@ -36,30 +49,36 @@ def insertar_incidente(
     direccion = normalizar_direccion(direccion)
 
     conn = db_conn()
-    cur = conn.cursor()
+    cur = None
 
-    cur.execute("""
-        INSERT INTO incidentes
-        (ciudad, barrio, categoria, categoria_detalle, descripcion, direccion, foto_url, estado, origen, fuente, latitud, longitud)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        RETURNING id;
-    """, (
-        ciudad,
-        barrio,
-        categoria,
-        categoria_detalle,
-        descripcion,
-        direccion,
-        foto_url,
-        estado,
-        origen,
-        fuente,
-        latitud,
-        longitud
-    ))
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO incidentes
+            (ciudad, barrio, categoria, categoria_detalle, descripcion, direccion, foto_url, estado, origen, fuente, latitud, longitud)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id;
+        """, (
+            ciudad,
+            barrio,
+            categoria,
+            categoria_detalle,
+            descripcion,
+            direccion,
+            foto_url,
+            estado,
+            origen,
+            fuente,
+            latitud,
+            longitud
+        ))
 
-    nuevo_id = cur.fetchone()[0]
-    conn.commit()
+        nuevo_id = cur.fetchone()[0]
+        conn.commit()
+    except Exception:
+        _rollback_y_cerrar_sin_ocultar_error(conn, cur)
+        raise
+
     cur.close()
     conn.close()
 
@@ -74,17 +93,23 @@ def actualizar_estado_incidentes(ids: List[int], estado: str):
         return 0
 
     conn = db_conn()
-    cur = conn.cursor()
+    cur = None
 
-    cur.execute("""
-        UPDATE incidentes
-        SET estado = %s,
-            fecha_actualizacion = NOW()
-        WHERE id = ANY(%s);
-    """, (estado, ids))
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE incidentes
+            SET estado = %s,
+                fecha_actualizacion = NOW()
+            WHERE id = ANY(%s);
+        """, (estado, ids))
 
-    afectados = cur.rowcount
-    conn.commit()
+        afectados = cur.rowcount
+        conn.commit()
+    except Exception:
+        _rollback_y_cerrar_sin_ocultar_error(conn, cur)
+        raise
+
     cur.close()
     conn.close()
 

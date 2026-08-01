@@ -69,9 +69,13 @@ sin cambios.
 
 Después de extraer las funciones PostgreSQL básicas y agregar pruebas unitarias
 con conexiones falsas, la suite quedó en `39 passed, 1 skipped, 1 warning`; el
-hash OpenAPI permaneció nuevamente sin cambios. Estas pruebas cubren el camino
-exitoso de commit y cierre, pero no implican que el rollback ante excepciones ya
-esté resuelto.
+hash OpenAPI permaneció nuevamente sin cambios.
+
+El refuerzo transaccional posterior agregó pruebas para fallos al crear cursor,
+ejecutar SQL, leer `RETURNING` y confirmar la transacción, además de fallos en
+el propio rollback o cierre. La suite quedó en `47 passed, 1 skipped, 1 warning`.
+Estas garantías corresponden a las funciones ya extraídas y no a todo el SQL
+que todavía permanece dentro de las rutas.
 
 Servicios y accesos validados:
 

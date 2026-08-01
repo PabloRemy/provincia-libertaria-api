@@ -13,37 +13,82 @@ def init_static_files_without_directory_check(self, *args, **kwargs):
     original_static_files_init(self, *args, **kwargs)
 
 
+class ErrorPostgresEsperado(RuntimeError):
+    pass
+
+
 class CursorFalso:
-    def __init__(self, *, returned_id=41, rowcount=0):
+    def __init__(
+        self,
+        *,
+        returned_id=41,
+        rowcount=0,
+        error_execute=None,
+        error_fetchone=None,
+        error_close=None,
+    ):
         self.returned_id = returned_id
         self.rowcount = rowcount
+        self.error_execute = error_execute
+        self.error_fetchone = error_fetchone
+        self.error_close = error_close
         self.executions = []
         self.closed = False
 
     def execute(self, query, params):
+        if self.error_execute:
+            raise self.error_execute
         self.executions.append((query, params))
 
     def fetchone(self):
+        if self.error_fetchone:
+            raise self.error_fetchone
         return (self.returned_id,)
 
     def close(self):
         self.closed = True
+        if self.error_close:
+            raise self.error_close
 
 
 class ConexionFalsa:
-    def __init__(self, cursor):
+    def __init__(
+        self,
+        cursor,
+        *,
+        error_cursor=None,
+        error_commit=None,
+        error_rollback=None,
+        error_close=None,
+    ):
         self._cursor = cursor
+        self.error_cursor = error_cursor
+        self.error_commit = error_commit
+        self.error_rollback = error_rollback
+        self.error_close = error_close
         self.committed = False
+        self.rolled_back = False
         self.closed = False
 
     def cursor(self):
+        if self.error_cursor:
+            raise self.error_cursor
         return self._cursor
 
     def commit(self):
+        if self.error_commit:
+            raise self.error_commit
         self.committed = True
+
+    def rollback(self):
+        self.rolled_back = True
+        if self.error_rollback:
+            raise self.error_rollback
 
     def close(self):
         self.closed = True
+        if self.error_close:
+            raise self.error_close
 
 
 def test_main_reexporta_acceso_a_datos_extraido():
@@ -148,5 +193,87 @@ def test_actualizar_estado_confirma_y_cierra(monkeypatch):
     assert result == 2
     assert cursor.executions[0][1] == ("publicado", [5, 8])
     assert connection.committed is True
+    assert cursor.closed is True
+    assert connection.closed is True
+
+
+@pytest.mark.parametrize("etapa", ["cursor", "execute", "fetchone", "commit"])
+def test_insertar_incidente_hace_rollback_y_cierra_ante_error(monkeypatch, etapa):
+    import provincia_api.database as database
+
+    error = ErrorPostgresEsperado(etapa)
+    cursor = CursorFalso(
+        error_execute=error if etapa == "execute" else None,
+        error_fetchone=error if etapa == "fetchone" else None,
+    )
+    connection = ConexionFalsa(
+        cursor,
+        error_cursor=error if etapa == "cursor" else None,
+        error_commit=error if etapa == "commit" else None,
+    )
+    monkeypatch.setattr(database, "db_conn", lambda: connection)
+
+    with pytest.raises(ErrorPostgresEsperado) as captured:
+        database.insertar_incidente(
+            ciudad="Berisso",
+            barrio="Centro",
+            categoria="Alumbrado",
+            descripcion="Prueba",
+        )
+
+    assert captured.value is error
+    assert connection.rolled_back is True
+    assert connection.closed is True
+    assert cursor.closed is (etapa != "cursor")
+
+
+@pytest.mark.parametrize("etapa", ["cursor", "execute", "commit"])
+def test_actualizar_estado_hace_rollback_y_cierra_ante_error(monkeypatch, etapa):
+    import provincia_api.database as database
+
+    error = ErrorPostgresEsperado(etapa)
+    cursor = CursorFalso(error_execute=error if etapa == "execute" else None)
+    connection = ConexionFalsa(
+        cursor,
+        error_cursor=error if etapa == "cursor" else None,
+        error_commit=error if etapa == "commit" else None,
+    )
+    monkeypatch.setattr(database, "db_conn", lambda: connection)
+
+    with pytest.raises(ErrorPostgresEsperado) as captured:
+        database.actualizar_estado_incidentes([1, 2], "publicado")
+
+    assert captured.value is error
+    assert connection.rolled_back is True
+    assert connection.closed is True
+    assert cursor.closed is (etapa != "cursor")
+
+
+def test_limpieza_no_oculta_error_original_ni_interrumpe_otros_cierres(monkeypatch):
+    import provincia_api.database as database
+
+    error_operacion = ErrorPostgresEsperado("execute")
+    error_limpieza = RuntimeError("limpieza")
+    cursor = CursorFalso(
+        error_execute=error_operacion,
+        error_close=error_limpieza,
+    )
+    connection = ConexionFalsa(
+        cursor,
+        error_rollback=error_limpieza,
+        error_close=error_limpieza,
+    )
+    monkeypatch.setattr(database, "db_conn", lambda: connection)
+
+    with pytest.raises(ErrorPostgresEsperado) as captured:
+        database.insertar_incidente(
+            ciudad="Berisso",
+            barrio="Centro",
+            categoria="Alumbrado",
+            descripcion="Prueba",
+        )
+
+    assert captured.value is error_operacion
+    assert connection.rolled_back is True
     assert cursor.closed is True
     assert connection.closed is True

@@ -64,6 +64,11 @@ autenticación/permisos, modelos Pydantic y las funciones PostgreSQL básicas ha
 suite quedó en 39 aprobadas, 1 omitida y 1 advertencia; el OpenAPI canónico
 coincide exactamente con el commit anterior.
 
+Las operaciones extraídas de inserción y actualización cuentan además con
+rollback y cierre defensivo ante fallos de cursor, ejecución, lectura o commit.
+Las fallas durante la propia limpieza no ocultan la excepción original. La
+suite posterior quedó en 47 aprobadas, 1 omitida y 1 advertencia.
+
 1. Completar la comparación estructural de PostgreSQL con defaults,
    constraints, índices y secuencias, sin consultar filas.
 2. Identificar la configuración de respaldos de base y `/data` sin mostrar
@@ -71,8 +76,8 @@ coincide exactamente con el commit anterior.
 3. Documentar el procedimiento actual de despliegue en Coolify.
 4. Preparar un procedimiento de publicación con respaldo, comprobaciones
    posteriores y reversión.
-5. Caracterizar fallos de PostgreSQL y mejorar rollback/cierre garantizado antes
-   de mover más SQL; no mover todavía paneles ni HTML.
+5. Caracterizar por separado cada bloque SQL restante antes de extraerlo; no
+   mover todavía paneles ni HTML.
 
 No modificar producción, no integrar historiales y no desplegar sin autorización
 expresa.

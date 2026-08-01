@@ -37,7 +37,9 @@ productiva y otros recorridos sin cobertura suficiente.
 La **Etapa 4.5 — Orden interno de `main.py`** avanzó con extracciones
 conservadoras de configuración, normalización, autenticación/permisos y modelos
 Pydantic. También se extrajeron las tres funciones básicas de acceso PostgreSQL
-para conexión, inserción de incidentes y actualización de estado.
+para conexión, inserción de incidentes y actualización de estado. Las dos
+operaciones transaccionales extraídas ahora intentan rollback y cierre completo
+ante fallos sin ocultar la excepción original.
 No existe todavía un procedimiento probado de publicación, respaldo y
 reversión.
 
@@ -64,7 +66,7 @@ reversión.
 - Suite sin PostgreSQL: 30 aprobadas, 1 deseleccionada y 1 advertencia.
 - Suite completa con `TEST_DATABASE_URL`: 31 aprobadas y 1 advertencia en la
   línea base Docker.
-- Suite posterior a la extracción inicial de PostgreSQL: 39 aprobadas, 1 omitida y 1
+- Suite posterior al refuerzo transaccional: 47 aprobadas, 1 omitida y 1
   advertencia; OpenAPI canónico sin cambios frente al commit anterior.
 - FastAPI `/`, `/docs` y `/openapi.json` respondieron 200.
 - Panel de Tercera Sección, paneles de Berisso, Ensenada y La Plata, tablero,
@@ -165,8 +167,8 @@ No modifica Docker, Compose, SQL, WordPress ni configuración productiva.
    secretos ni datos personales.
 3. Documentar el procedimiento actual de despliegue en Coolify.
 4. Definir publicación, respaldo, comprobaciones posteriores y reversión.
-5. Antes de extraer más SQL, agregar pruebas de error y mejorar rollback/cierre
-   garantizado de conexiones sin cambiar el contrato HTTP.
+5. Aplicar el mismo ciclo de caracterización a cada bloque SQL restante antes
+   de moverlo; no asumir que el refuerzo cubre consultas aún embebidas en rutas.
 6. Mantener `main.py` como punto de entrada y comprobar OpenAPI y suite completa
    después de cada extracción.
 
