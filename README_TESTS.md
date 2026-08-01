@@ -63,6 +63,10 @@ a PostgreSQL productivo quedó en `32 passed, 1 skipped, 1 warning`. Además, el
 OpenAPI canónico conservó el mismo SHA-256 antes y después del cambio:
 `a9145c77182cd8d6a977c96203d4a03cd5a3b89bca65e817b34a8a70b9b59e76`.
 
+Después de extraer también los modelos Pydantic, la suite quedó en
+`33 passed, 1 skipped, 1 warning`; el mismo hash OpenAPI volvió a permanecer
+sin cambios.
+
 Servicios y accesos validados:
 
 ```text

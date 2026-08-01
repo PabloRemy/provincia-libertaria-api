@@ -10,7 +10,6 @@ from urllib.parse import urlparse
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request, Depends, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
-from pydantic import BaseModel
 from PIL import Image
 import psycopg2
 
@@ -29,6 +28,7 @@ from provincia_api.config import (
     UPLOAD_DIR,
     UPLOAD_ROOT,
 )
+from provincia_api.models import FotoBase64, Incidente, IncidenteFotoJSON, Registro
 from provincia_api.normalization import (
     ciudad_desde_slug,
     normalizar_direccion,
@@ -45,51 +45,6 @@ app.mount(
     StaticFiles(directory=UPLOAD_ROOT, check_dir=False),
     name="uploads"
 )
-
-
-class Registro(BaseModel):
-    nombre_apellido: str
-    whatsapp: str
-    email: Optional[str] = None
-    ciudad: str
-    barrio: Optional[str] = None
-    participacion: str
-    mensaje: Optional[str] = None
-
-
-class Incidente(BaseModel):
-    ciudad: str
-    barrio: str
-    categoria: str
-    categoria_detalle: Optional[str] = None
-    descripcion: str
-    direccion: Optional[str] = None
-    foto_url: Optional[str] = None
-    estado: Optional[str] = "pendiente"
-    origen: Optional[str] = "vecino"
-    fuente: Optional[str] = "formulario"
-    latitud: Optional[float] = None
-    longitud: Optional[float] = None
-
-
-class FotoBase64(BaseModel):
-    filename: Optional[str] = None
-    content: str
-
-
-class IncidenteFotoJSON(BaseModel):
-    ciudad: str
-    barrio: Optional[str] = None
-    categoria: str
-    categoria_detalle: Optional[str] = None
-    descripcion: str
-    direccion: Optional[str] = None
-    foto: Optional[Union[FotoBase64, str]] = None
-    estado: Optional[str] = "pendiente"
-    origen: Optional[str] = "vecino"
-    fuente: Optional[str] = "formulario"
-    latitud: Optional[float] = None
-    longitud: Optional[float] = None
 
 
 @app.get("/")

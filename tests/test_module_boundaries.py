@@ -54,3 +54,20 @@ def test_main_reexporta_simbolos_extraidos():
     assert main.normalizar_numero is normalizar_numero
     assert main.slug_desde_ciudad is slug_desde_ciudad
     assert main.ciudad_desde_slug is ciudad_desde_slug
+
+
+def test_main_reexporta_modelos_extraidos():
+    from provincia_api.models import (
+        FotoBase64,
+        Incidente,
+        IncidenteFotoJSON,
+        Registro,
+    )
+
+    with patch.object(StaticFiles, "__init__", init_static_files_without_directory_check):
+        import main
+
+    assert main.Registro is Registro
+    assert main.Incidente is Incidente
+    assert main.FotoBase64 is FotoBase64
+    assert main.IncidenteFotoJSON is IncidenteFotoJSON

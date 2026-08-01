@@ -58,11 +58,11 @@ en 31 pruebas aprobadas, 1 omitida y 1 advertencia no bloqueante.
 La comparación de Dockerfiles y la auditoría pública de producción están
 registradas en `AUDITORIA_PRODUCCION_LECTURA_2026-08-01.md`.
 
-La primera fase de modularización extrajo configuración, normalización y
-autenticación/permisos hacia `provincia_api/`. `main.py` reexporta los símbolos
-anteriores para preservar compatibilidad. La suite quedó en 32 aprobadas, 1
-omitida y 1 advertencia; el OpenAPI canónico coincide exactamente con el commit
-anterior.
+Las dos primeras fases de modularización extrajeron configuración,
+normalización, autenticación/permisos y modelos Pydantic hacia `provincia_api/`.
+`main.py` reexporta los símbolos anteriores para preservar compatibilidad. La
+suite quedó en 33 aprobadas, 1 omitida y 1 advertencia; el OpenAPI canónico
+coincide exactamente con el commit anterior.
 
 1. Completar la comparación estructural de PostgreSQL con defaults,
    constraints, índices y secuencias, sin consultar filas.
@@ -71,8 +71,8 @@ anterior.
 3. Documentar el procedimiento actual de despliegue en Coolify.
 4. Preparar un procedimiento de publicación con respaldo, comprobaciones
    posteriores y reversión.
-5. Continuar la modularización mediante ciclos TDD pequeños; próximos candidatos:
-   modelos Pydantic y acceso PostgreSQL, sin mover todavía paneles ni HTML.
+5. Continuar la modularización mediante ciclos TDD pequeños; próximo candidato:
+   acceso PostgreSQL, sin mover todavía paneles ni HTML.
 
 No modificar producción, no integrar historiales y no desplegar sin autorización
 expresa.
