@@ -15,6 +15,8 @@ Actualizado: 2026-08-01.
   `origin/main` (`abc9807bba2974ecd1bab36aa80166de3c66fbdf`).
 - Existe un acceso SSH restringido mediante el alias local
   `provincia-vps-auditoria`; sólo ejecuta un informe fijo sin secretos.
+- Antes de usar acceso SSH como `root` al VPS se debe obtener autorización
+  expresa de Pablo; por defecto utilizar `provincia-vps-auditoria`.
 
 ## Decisión de sincronización
 
