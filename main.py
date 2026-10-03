@@ -1,188 +1,68 @@
 import os
-import uuid
-import base64
 import json
 import html
-import secrets
-from io import BytesIO
-from typing import Optional, List
+from urllib.parse import parse_qs, urlencode, urlsplit
+from typing import Optional, List, Any
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request, Depends, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from pydantic import BaseModel
-from PIL import Image
-import psycopg2
+
+from provincia_api.auth import (
+    AdminLoginRequired,
+    SESSION_AGE,
+    SESSION_COOKIE,
+    authenticate_admin,
+    create_session,
+    destination_for_scope,
+    get_current_admin,
+    parse_admin_users,
+    puede_ver_distrito,
+    revoke_session,
+    requiere_distrito,
+    secure_session_cookie,
+)
+from provincia_api.config import (
+    DATA_DIR,
+    DISTRITOS_TERCERA,
+    ESTADOS_VALIDOS,
+    PUBLIC_UPLOAD_BASE,
+    UPLOAD_DIR,
+    UPLOAD_ROOT,
+)
+from provincia_api.database import (
+    actualizar_estado_incidentes,
+    db_conn,
+    insertar_incidente,
+)
+from provincia_api.models import FotoBase64, Incidente, IncidenteFotoJSON, Registro
+from provincia_api.normalization import (
+    ciudad_desde_slug,
+    normalizar_direccion,
+    normalizar_numero,
+    normalizar_texto,
+    slug_desde_ciudad,
+)
+from provincia_api.storage import (
+    procesar_foto_base64,
+    procesar_foto_upload,
+    procesar_foto_webhook,
+    url_publica_foto,
+)
+
 
 app = FastAPI()
 
+
+@app.exception_handler(AdminLoginRequired)
+def admin_login_required(request: Request, exc: AdminLoginRequired):
+    return RedirectResponse(url="/login", status_code=303)
+
 app.mount(
     "/uploads",
-    StaticFiles(directory="/data/uploads"),
+    StaticFiles(directory=UPLOAD_ROOT, check_dir=False),
     name="uploads"
 )
-
-DATABASE_URL = os.getenv("DATABASE_URL")
-UPLOAD_DIR = "/data/uploads/incidentes"
-PUBLIC_UPLOAD_BASE = "/uploads/incidentes"
-
-ESTADOS_VALIDOS = ["pendiente", "publicado", "resuelto", "oculto"]
-
-security = HTTPBasic()
-
-DISTRITOS_TERCERA = [
-    ("berisso", "Berisso"),
-    ("ensenada", "Ensenada"),
-    ("la-plata", "La Plata"),
-]
-
-def parse_admin_users():
-    raw = os.getenv("ADMIN_USERS", "")
-    users = {}
-
-    for item in raw.split(","):
-        item = item.strip()
-        if not item:
-            continue
-
-        parts = item.split(":")
-        if len(parts) != 3:
-            continue
-
-        username, password, scope = parts
-        users[username.strip()] = {
-            "password": password.strip(),
-            "scope": scope.strip()
-        }
-
-    return users
-
-
-def get_current_admin(credentials: HTTPBasicCredentials = Depends(security)):
-    users = parse_admin_users()
-
-    if not users:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="ADMIN_USERS no configurado"
-        )
-
-    user_data = users.get(credentials.username)
-
-    valid_user = user_data is not None
-    valid_password = (
-        valid_user and
-        secrets.compare_digest(credentials.password, user_data["password"])
-    )
-
-    if not valid_user or not valid_password:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Usuario o contraseña inválidos",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-
-    return {
-        "username": credentials.username,
-        "scope": user_data["scope"]
-    }
-
-
-def puede_ver_distrito(admin, distrito_slug: str) -> bool:
-    scope = admin.get("scope")
-
-    if scope == "todos":
-        return True
-
-    if scope == "tercera-seccion":
-        return distrito_slug in [slug for slug, _ in DISTRITOS_TERCERA]
-
-    return scope == distrito_slug
-
-
-def requiere_distrito(distrito_slug: str, admin):
-    if not puede_ver_distrito(admin, distrito_slug):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tenés permiso para ver este distrito"
-        )
-
-
-def slug_desde_ciudad(ciudad: Optional[str]) -> str:
-    if not ciudad:
-        return "berisso"
-
-    ciudad_norm = normalizar_texto(ciudad) or ""
-
-    mapa = {
-        "Berisso": "berisso",
-        "Ensenada": "ensenada",
-        "La Plata": "la-plata",
-        "Punta Indio": "punta-indio",
-        "Magdalena": "magdalena",
-        "Quilmes": "quilmes",
-        "Avellaneda": "avellaneda",
-        "Lanús": "lanus",
-        "Lomas De Zamora": "lomas-de-zamora",
-        "Almirante Brown": "almirante-brown",
-        "Florencio Varela": "florencio-varela",
-        "Berazategui": "berazategui",
-        "Esteban Echeverría": "esteban-echeverria",
-        "Ezeiza": "ezeiza",
-        "Cañuelas": "canuelas",
-        "San Vicente": "san-vicente",
-        "Presidente Perón": "presidente-peron",
-        "La Matanza": "la-matanza",
-    }
-
-    return mapa.get(ciudad_norm, ciudad_norm.lower().replace(" ", "-"))
-
-
-
-class Registro(BaseModel):
-    nombre_apellido: str
-    whatsapp: str
-    email: Optional[str] = None
-    ciudad: str
-    barrio: Optional[str] = None
-    participacion: str
-    mensaje: Optional[str] = None
-
-
-class Incidente(BaseModel):
-    ciudad: str
-    barrio: str
-    categoria: str
-    categoria_detalle: Optional[str] = None
-    descripcion: str
-    direccion: Optional[str] = None
-    foto_url: Optional[str] = None
-    estado: Optional[str] = "pendiente"
-    origen: Optional[str] = "vecino"
-    fuente: Optional[str] = "formulario"
-    latitud: Optional[float] = None
-    longitud: Optional[float] = None
-
-
-class FotoBase64(BaseModel):
-    filename: Optional[str] = None
-    content: str
-
-
-class IncidenteFotoJSON(BaseModel):
-    ciudad: str
-    barrio: str
-    categoria: str
-    categoria_detalle: Optional[str] = None
-    descripcion: str
-    direccion: Optional[str] = None
-    foto: Optional[FotoBase64] = None
-    estado: Optional[str] = "pendiente"
-    origen: Optional[str] = "vecino"
-    fuente: Optional[str] = "formulario"
-    latitud: Optional[float] = None
-    longitud: Optional[float] = None
 
 
 @app.get("/")
@@ -190,179 +70,224 @@ def home():
     return {"status": "ok", "app": "Provincia Libertaria API"}
 
 
-def db_conn():
-    if not DATABASE_URL:
-        raise HTTPException(status_code=500, detail="DATABASE_URL no configurada")
-    return psycopg2.connect(DATABASE_URL)
+def login_page(error: bool = False) -> HTMLResponse:
+    message = '<p class="error" role="alert">Usuario o contraseña inválidos.</p>' if error else ""
+    return HTMLResponse(
+        content=f"""<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ingresar · Provincia Libertaria</title>
+  <style>
+    :root {{ color-scheme: dark; }}
+    * {{ box-sizing: border-box; }}
+    body {{ margin: 0; min-height: 100vh; display: grid; place-items: center;
+      padding: 24px; background: radial-gradient(circle at top, #3b101b, #130d11 65%);
+      color: #f6eee4; font-family: Arial, sans-serif; }}
+    main {{ width: min(100%, 420px); padding: clamp(26px, 6vw, 42px);
+      background: #211418; border: 1px solid #9b7a38; border-radius: 14px;
+      box-shadow: 0 20px 60px #0008; }}
+    .eyebrow {{ color: #d7b970; text-transform: uppercase; letter-spacing: .18em;
+      font-size: .75rem; font-weight: 700; }}
+    h1 {{ margin: 12px 0 8px; font-size: clamp(1.8rem, 6vw, 2.4rem); }}
+    p {{ color: #cfbfbb; line-height: 1.5; }}
+    label {{ display: block; margin: 18px 0 8px; font-weight: 600; }}
+    input {{ width: 100%; padding: 13px 14px; border: 1px solid #7c6264;
+      border-radius: 7px; background: #120d10; color: white; font: inherit; }}
+    input:focus {{ outline: 2px solid #d7b970; outline-offset: 2px; }}
+    button {{ width: 100%; margin-top: 28px; padding: 14px; border: 0;
+      border-radius: 7px; background: #c6a45b; color: #1a1010;
+      font: inherit; font-weight: 700; cursor: pointer; }}
+    button:hover {{ background: #e0bd72; }}
+    .error {{ color: #ffd7d7; background: #59222a; padding: 10px 12px; border-radius: 6px; }}
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">Provincia Libertaria</div>
+    <h1>Ingresar</h1>
+    <p>Acceso a la administración territorial</p>
+    {message}
+    <form method="post" action="/login">
+      <label for="username">Usuario</label>
+      <input id="username" name="username" autocomplete="username" required>
+      <label for="password">Contraseña</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <button type="submit">Entrar</button>
+    </form>
+  </main>
+</body>
+</html>""",
+        status_code=401 if error else 200,
+        headers={"Cache-Control": "no-store"},
+    )
 
 
-def normalizar_texto(valor: Optional[str]) -> Optional[str]:
-    if valor is None:
-        return None
-    return " ".join(valor.strip().split()).title()
+@app.get("/login", response_class=HTMLResponse, include_in_schema=False)
+def login_form():
+    return login_page()
 
 
-def normalizar_direccion(valor: Optional[str]) -> Optional[str]:
-    if valor is None:
-        return None
-    limpio = " ".join(valor.strip().split())
-    return limpio if limpio else None
+@app.post("/login", include_in_schema=False)
+def login_submit(username: str = Form(...), password: str = Form(...)):
+    admin = authenticate_admin(username, password)
+    if admin is None:
+        return login_page(error=True)
+    destination = destination_for_scope(admin["scope"])
+    token = create_session(admin)
+    response = RedirectResponse(url=destination, status_code=303)
+    response.set_cookie(
+        SESSION_COOKIE, token, max_age=SESSION_AGE, httponly=True,
+        secure=secure_session_cookie(), samesite="strict", path="/",
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
-def normalizar_numero(valor):
-    if valor in (None, ""):
-        return None
-    try:
-        return float(str(valor).replace(",", "."))
-    except ValueError:
-        return None
+@app.get("/logout", include_in_schema=False)
+@app.post("/logout", include_in_schema=False)
+def logout(request: Request):
+    token = request.cookies.get(SESSION_COOKIE)
+    if token:
+        revoke_session(token)
+    response = RedirectResponse(url="/login", status_code=303)
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
-def ciudad_desde_slug(slug: str) -> str:
-    mapa = {
-        "berisso": "Berisso",
-        "ensenada": "Ensenada",
-        "la-plata": "La Plata",
-        "punta-indio": "Punta Indio",
-        "magdalena": "Magdalena",
-        "quilmes": "Quilmes",
-        "avellaneda": "Avellaneda",
-        "lanus": "Lanús",
-        "lomas-de-zamora": "Lomas De Zamora",
-        "almirante-brown": "Almirante Brown",
-        "florencio-varela": "Florencio Varela",
-        "berazategui": "Berazategui",
-        "esteban-echeverria": "Esteban Echeverría",
-        "ezeiza": "Ezeiza",
-        "canuelas": "Cañuelas",
-        "san-vicente": "San Vicente",
-        "presidente-peron": "Presidente Perón",
-        "la-matanza": "La Matanza"
+ADMIN_SESSION_STYLE = """
+    .admin-session-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 10px 18px;
+        margin-bottom: 18px;
+        padding: 10px 14px;
+        border: 1px solid rgba(241, 213, 113, .5);
+        border-radius: 10px;
+        background: rgba(18, 18, 18, .45);
+        color: #f7e7b0;
+        font-size: 14px;
     }
+    .admin-session-identity {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .admin-session-bar strong { color: #ffffff; }
+    .admin-session-bar form { margin: 0; }
+    .admin-session-bar button {
+        width: auto;
+        margin: 0;
+        padding: 7px 12px;
+        border: 1px solid #b98b31;
+        border-radius: 7px;
+        background: #121212;
+        color: #f1d571;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+    }
+    .admin-session-bar button:hover,
+    .admin-session-bar button:focus-visible {
+        background: #f1d571;
+        color: #121212;
+    }
+"""
 
-    return mapa.get(slug.lower(), slug.replace("-", " ").title())
+
+def admin_session_bar(admin: dict) -> str:
+    scope = admin["scope"]
+    if scope == "todos":
+        scope_label = "Todos los distritos"
+    elif scope == "tercera-seccion":
+        scope_label = "Tercera Sección"
+    else:
+        scope_label = dict(DISTRITOS_TERCERA).get(
+            scope, scope.replace("-", " ").title()
+        )
+    username = html.escape(admin["username"], quote=True)
+    scope_label = html.escape(scope_label, quote=True)
+    return f"""<div class="admin-session-bar" role="group" aria-label="Sesión administrativa">
+        <span class="admin-session-identity">
+            <strong>{username}</strong><span aria-hidden="true">·</span><span>{scope_label}</span>
+        </span>
+        <form method="post" action="/logout"><button type="submit">Salir</button></form>
+    </div>"""
 
 
-def insertar_incidente(
-    ciudad,
-    barrio,
-    categoria,
-    descripcion,
-    categoria_detalle=None,
-    direccion=None,
-    foto_url=None,
-    estado="pendiente",
-    origen="vecino",
-    fuente="formulario",
-    latitud=None,
-    longitud=None,
+def limpiar_payload_webhook(payload: dict[str, Any]) -> dict[str, Any]:
+    limpio = dict(payload)
+
+    for campo in ("latitud", "longitud"):
+        if limpio.get(campo) == "":
+            limpio[campo] = None
+
+    for campo in ("barrio", "categoria_detalle", "direccion", "foto"):
+        if limpio.get(campo) == "":
+            limpio[campo] = None
+
+    return limpio
+
+
+async def leer_payload_webhook(request: Request) -> tuple[dict[str, Any], Optional[UploadFile]]:
+    content_type = request.headers.get("content-type", "")
+
+    if "application/json" in content_type:
+        return limpiar_payload_webhook(await request.json()), None
+
+    if (
+        "application/x-www-form-urlencoded" in content_type
+        or "multipart/form-data" in content_type
+    ):
+        form = await request.form()
+        payload = {}
+        foto_upload = None
+
+        for key, value in form.multi_items():
+            if hasattr(value, "filename") and hasattr(value, "file"):
+                if key == "foto" and value.filename:
+                    foto_upload = value
+                else:
+                    payload[key] = ""
+                continue
+
+            payload[key] = value
+
+        return limpiar_payload_webhook(payload), foto_upload
+
+    return limpiar_payload_webhook(await request.json()), None
+
+
+def guardar_incidente_con_foto_json(
+    incidente: IncidenteFotoJSON,
+    foto_upload: Optional[UploadFile] = None
 ):
-    ciudad = normalizar_texto(ciudad)
-    barrio = normalizar_texto(barrio)
-    categoria = normalizar_texto(categoria)
-    categoria_detalle = normalizar_direccion(categoria_detalle)
-    direccion = normalizar_direccion(direccion)
+    if foto_upload:
+        foto_url = procesar_foto_upload(foto_upload)
+    else:
+        foto_url = procesar_foto_webhook(incidente.foto)
 
-    conn = db_conn()
-    cur = conn.cursor()
+    nuevo_id = insertar_incidente(
+        ciudad=incidente.ciudad,
+        barrio=incidente.barrio or "Sin especificar",
+        categoria=incidente.categoria,
+        descripcion=incidente.descripcion,
+        categoria_detalle=incidente.categoria_detalle,
+        direccion=incidente.direccion,
+        foto_url=foto_url,
+        estado=incidente.estado or "pendiente",
+        origen=incidente.origen,
+        fuente=incidente.fuente,
+        latitud=incidente.latitud,
+        longitud=incidente.longitud,
+    )
 
-    cur.execute("""
-        INSERT INTO incidentes
-        (ciudad, barrio, categoria, categoria_detalle, descripcion, direccion, foto_url, estado, origen, fuente, latitud, longitud)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        RETURNING id;
-    """, (
-        ciudad,
-        barrio,
-        categoria,
-        categoria_detalle,
-        descripcion,
-        direccion,
-        foto_url,
-        estado,
-        origen,
-        fuente,
-        latitud,
-        longitud
-    ))
-
-    nuevo_id = cur.fetchone()[0]
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    return nuevo_id
-
-
-def actualizar_estado_incidentes(ids: List[int], estado: str):
-    if estado not in ESTADOS_VALIDOS:
-        raise HTTPException(status_code=400, detail="Estado inválido")
-
-    if not ids:
-        return 0
-
-    conn = db_conn()
-    cur = conn.cursor()
-
-    cur.execute("""
-        UPDATE incidentes
-        SET estado = %s,
-            fecha_actualizacion = NOW()
-        WHERE id = ANY(%s);
-    """, (estado, ids))
-
-    afectados = cur.rowcount
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    return afectados
-
-
-def procesar_foto_upload(foto: UploadFile) -> Optional[str]:
-    if not foto or not foto.filename:
-        return None
-
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-    if foto.content_type not in ["image/jpeg", "image/png", "image/webp"]:
-        raise HTTPException(status_code=400, detail="Formato de imagen no permitido")
-
-    filename = f"{uuid.uuid4().hex}.webp"
-    file_path = os.path.join(UPLOAD_DIR, filename)
-
-    try:
-        image = Image.open(foto.file)
-        image = image.convert("RGB")
-        image.thumbnail((800, 800))
-        image.save(file_path, "WEBP", quality=55, method=6, optimize=True)
-
-        return f"{PUBLIC_UPLOAD_BASE}/{filename}"
-
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"No se pudo procesar la imagen: {str(e)}")
-
-
-def procesar_foto_base64(foto: FotoBase64) -> Optional[str]:
-    if not foto or not foto.content:
-        return None
-
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-    filename = f"{uuid.uuid4().hex}.webp"
-    file_path = os.path.join(UPLOAD_DIR, filename)
-
-    try:
-        image_bytes = base64.b64decode(foto.content)
-        image = Image.open(BytesIO(image_bytes))
-        image = image.convert("RGB")
-        image.thumbnail((800, 800))
-        image.save(file_path, "WEBP", quality=55, method=6, optimize=True)
-
-        return f"{PUBLIC_UPLOAD_BASE}/{filename}"
-
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"No se pudo procesar la imagen base64: {str(e)}")
+    return {"ok": True, "id": nuevo_id, "foto_url": foto_url}
 
 
 @app.get("/foto/{nombre}")
@@ -435,26 +360,11 @@ def crear_incidente(incidente: Incidente):
 
 
 @app.post("/incidente-foto-json")
-def crear_incidente_con_foto_json(incidente: IncidenteFotoJSON):
+async def crear_incidente_con_foto_json(request: Request):
     try:
-        foto_url = procesar_foto_base64(incidente.foto) if incidente.foto else None
-
-        nuevo_id = insertar_incidente(
-            ciudad=incidente.ciudad,
-            barrio=incidente.barrio,
-            categoria=incidente.categoria,
-            descripcion=incidente.descripcion,
-            categoria_detalle=incidente.categoria_detalle,
-            direccion=incidente.direccion,
-            foto_url=foto_url,
-            estado=incidente.estado or "pendiente",
-            origen=incidente.origen,
-            fuente=incidente.fuente,
-            latitud=incidente.latitud,
-            longitud=incidente.longitud,
-        )
-
-        return {"ok": True, "id": nuevo_id, "foto_url": foto_url}
+        payload, foto_upload = await leer_payload_webhook(request)
+        incidente = IncidenteFotoJSON.model_validate(payload)
+        return guardar_incidente_con_foto_json(incidente, foto_upload)
 
     except HTTPException:
         raise
@@ -470,12 +380,32 @@ def cambiar_estado_lote(
     volver: str = Form("/territorio/berisso"),
     admin = Depends(get_current_admin)
 ):
-    if "/territorio/" in volver:
-        distrito_slug = volver.split("/territorio/")[-1].split("?")[0].strip("/")
+    parsed = urlsplit(volver)
+    if parsed.scheme or parsed.netloc or parsed.fragment:
+        raise HTTPException(status_code=400, detail="Destino de retorno inválido")
+    if parsed.path == "/tercera-seccion" and not parsed.query:
+        if admin["scope"] not in ("todos", "tercera-seccion"):
+            raise HTTPException(status_code=403, detail="Sin permiso para la Tercera Sección")
+        destino = parsed.path
+    elif parsed.path.startswith("/territorio/"):
+        distrito_slug = parsed.path.removeprefix("/territorio/")
+        if not distrito_slug or "/" in distrito_slug:
+            raise HTTPException(status_code=400, detail="Destino de retorno inválido")
         requiere_distrito(distrito_slug, admin)
+        query = parse_qs(parsed.query, keep_blank_values=True)
+        if set(query) - {"estado"} or any(len(value) != 1 for value in query.values()):
+            raise HTTPException(status_code=400, detail="Destino de retorno inválido")
+        estado_retorno = query.get("estado", ["pendiente"])[0]
+        if estado_retorno not in (*ESTADOS_VALIDOS, "todos"):
+            raise HTTPException(status_code=400, detail="Destino de retorno inválido")
+        destino = parsed.path
+        if parsed.query:
+            destino += "?" + urlencode({"estado": estado_retorno})
+    else:
+        raise HTTPException(status_code=400, detail="Destino de retorno inválido")
 
     actualizar_estado_incidentes(ids, estado)
-    return RedirectResponse(url=volver, status_code=303)
+    return RedirectResponse(url=destino, status_code=303)
 
 
 @app.get("/incidentes/editar/{incidente_id}", response_class=HTMLResponse)
@@ -518,11 +448,11 @@ def editar_incidente_form(incidente_id: int, admin = Depends(get_current_admin))
 
     foto_html = ""
     if foto_url:
-        nombre_foto = foto_url.split("/")[-1]
+        foto_src = url_publica_foto(foto_url)
         foto_html = f"""
         <div class="foto-actual">
             <p><strong>Foto actual</strong></p>
-            <img src="/foto/{html.escape(nombre_foto)}" alt="Foto actual">
+            <img src="{html.escape(foto_src or '', quote=True)}" alt="Foto actual">
             <label class="checkline">
                 <input type="checkbox" name="quitar_foto" value="1">
                 Quitar foto actual
@@ -652,10 +582,12 @@ def editar_incidente_form(incidente_id: int, admin = Depends(get_current_admin))
                     grid-template-columns: 1fr;
                 }}
             }}
+            {ADMIN_SESSION_STYLE}
         </style>
     </head>
     <body>
         <main class="wrap">
+            {admin_session_bar(admin)}
             <div class="box">
                 <h1>Editar reporte #{id_incidente}</h1>
 
@@ -1358,10 +1290,12 @@ def panel_tercera_seccion(admin = Depends(get_current_admin)):
                     font-size: 32px;
                 }}
             }}
+            {ADMIN_SESSION_STYLE}
         </style>
     </head>
     <body>
         <main class="wrap">
+            {admin_session_bar(admin)}
             <section>
                 <div class="eyebrow">Panel general</div>
                 <h1>Tercera Sección</h1>
@@ -1510,8 +1444,8 @@ def panel_distrito(distrito_slug: str, estado: str = "pendiente", admin = Depend
         direccion_html = f'<p class="direccion">🧭 {direccion_safe}</p>' if direccion_safe else ""
 
         if foto_url:
-            nombre_foto = foto_url.split("/")[-1]
-            imagen_html = f'<img src="/foto/{html.escape(nombre_foto)}" alt="Foto del reporte">'
+            foto_src = url_publica_foto(foto_url)
+            imagen_html = f'<img src="{html.escape(foto_src or "", quote=True)}" alt="Foto del reporte">'
         else:
             imagen_html = '<div class="sin-foto">Sin foto</div>'
 
@@ -1870,10 +1804,12 @@ def panel_distrito(distrito_slug: str, estado: str = "pendiente", admin = Depend
                     font-size: 32px;
                 }}
             }}
+            {ADMIN_SESSION_STYLE}
         </style>
     </head>
     <body>
         <main class="wrap">
+            {admin_session_bar(admin)}
             <section>
                 <div class="eyebrow">Panel territorial</div>
                 <h1>Distrito {html.escape(ciudad)}</h1>
@@ -2018,8 +1954,8 @@ def reportes_publicos(distrito_slug: str):
         direccion_html = f'<p class="direccion">🧭 {direccion_safe}</p>' if direccion_safe else ""
 
         if foto_url:
-            nombre_foto = foto_url.split("/")[-1]
-            imagen_html = f'<img src="/foto/{html.escape(nombre_foto)}" alt="Foto del reporte">'
+            foto_src = url_publica_foto(foto_url)
+            imagen_html = f'<img src="{html.escape(foto_src or "", quote=True)}" alt="Foto del reporte">'
         else:
             imagen_html = '<div class="sin-foto">Sin foto</div>'
 
@@ -2374,21 +2310,3 @@ def reportes_publicos(distrito_slug: str):
     """
 
     return HTMLResponse(content=html_response)
-
-
-@app.post("/debug")
-async def debug_request(request: Request):
-    content_type = request.headers.get("content-type", "")
-    print("DEBUG CONTENT-TYPE:", content_type, flush=True)
-
-    if "application/json" in content_type:
-        data = await request.json()
-        print("DEBUG JSON:", json.dumps(data, ensure_ascii=False)[:3000], flush=True)
-        return {"ok": True, "type": "json"}
-
-    form = await request.form()
-    form_data = {key: str(value)[:500] for key, value in form.items()}
-    print("DEBUG FORM KEYS:", list(form.keys()), flush=True)
-    print("DEBUG FORM DATA:", json.dumps(form_data, ensure_ascii=False)[:3000], flush=True)
-
-    return {"ok": True, "type": "form", "keys": list(form.keys())}
