@@ -6,16 +6,16 @@ de reclutamiento y reportes.
 
 ## Estado de ramas
 
-- `main`: rama productiva y referencia histórica en GitHub. Producción continúa
-  desplegada desde GitHub, pero el commit efectivamente ejecutado en el VPS debe
-  verificarse antes de publicar cambios.
+- `main`: rama productiva. El release `e9a9b0627a9de12ffa4a05fb6ceeec5dab066dce`
+  está desplegado y verificado en `https://mapa.provincialibertaria.com`.
 - `integracion-local-sobre-github`: rama de desarrollo y reorganización. Es la
   fuente de verdad técnica para el trabajo futuro y contiene documentación,
   tests, entorno local aislado y un `main.py` más avanzado.
 
-Ambas ramas tienen historiales independientes. No ejecutar `pull`, merge ni
-rebase automático entre ellas. La futura sincronización debe ser manual,
-revisada y controlada.
+Ambas ramas partieron de historiales independientes. El commit productivo de
+reconciliación conserva `abc9807` como padre inmediato y reproduce exactamente
+el árbol técnico de `c7c19af`. No ejecutar `pull`, merge ni rebase automático
+entre ellas; futuras publicaciones requieren revisión y autorización propias.
 
 ## Inicio rápido
 

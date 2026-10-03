@@ -1,39 +1,37 @@
 # Continuar desde aquí
 
-## Punto de reanudación confirmado — 2026-10-03
+## Punto de reanudación confirmado — cierre productivo 2026-10-03
 
-La rama técnica `integracion-local-sobre-github` está publicada y sincronizada
-con `origin` en `34f19f4` (`fix: preparar imagen Docker para arquitectura
-modular`); el árbol estaba limpio tras el push. El Dockerfile canónico y el
-login con sesiones se validaron sólo en local: 74 pruebas aprobadas, una
-advertencia conocida de Starlette, login por scopes `todos` y `berisso`, logout,
-`DATA_DIR` escribible y SQLite de sesiones. Pablo aprobó visualmente el login,
-la barra de sesión y el logout. Producción no recibió estos cambios.
+Producción ejecuta `main` en `e9a9b0627a9de12ffa4a05fb6ceeec5dab066dce`.
+Coolify terminó el Redeploy manual autorizado; el push por sí solo no activó
+auto-deploy. La imagen productiva tiene ese SHA y el contenedor
+`n85p5qn4eo94demg4mnbfu3m-174729087945` está running. Pablo verificó en
+`https://mapa.provincialibertaria.com/login` el acceso territorial, la barra
+de sesión, `Salir` y la exigencia de login tras logout. QA de lectura confirmó
+`/login` 200, `/debug` 404, `/` 200, PostgreSQL ready, fotos 28/28 y
+`/data/admin_sessions.sqlite3` existente.
 
-Producción continúa en `abc9807bba2974ecd1bab36aa80166de3c66fbdf`, con
-HTTP Basic en `/territorio/berisso`; `/login` aún no existe allí. Pablo confirmó
-visualmente en Coolify `ProvinciaLibertaria / production` la Application
-`provincia-libertaria-api:main-a10pfhw4ldlkafu6m7bh4p78`, fuente Public
-GitHub `PabloRemy/provincia-libertaria-api`, rama `main`, Commit SHA `HEAD`,
-Build Pack `Dockerfile`, Base Directory `/` y Dockerfile Location `/Dockerfile`.
-El nuevo Dockerfile es compatible con esa ruta, pero publicar la rama técnica
-requiere un mecanismo controlado sin mezclar historiales con `main`.
+La rama técnica `integracion-local-sobre-github` permanece en `c7c19af` como
+línea de desarrollo. El código validado pasó `74 passed, 1 warning` de
+Starlette, Dockerfile, login, scopes, logout y escritura en `DATA_DIR`. El
+commit de reconciliación `e9a9b06` tiene padre inmediato `abc9807` y árbol
+`b65a8c3ff144d46de1f0dcb0e755f6c2e76770cf`, idéntico al de `c7c19af`;
+se publicó mediante fast-forward, sin mezclar las historias independientes.
+El worktree temporal de `main` sigue en `/tmp/provincia-libertaria-main-20261003`.
 
-Coolify muestra `1 unapplied configuration change detected. A rebuild is
-required.`; "View changes" sólo mostró una diferencia genérica y no identificó
-el campo. **No aplicar antes de identificarlo.** En Rollback hay dos imágenes
-configuradas para retención y la imagen `abc9807` está disponible con acción
-Rollback. El almacenamiento persistente confirmado es
-`/data/incidentes-fotos` (host) → `/data` (contenedor), compatible con el
-`DATA_DIR=/data` predeterminado. Persistencia no equivale a backup.
+Antes del release se verificó un backup local exitoso de la base
+`provincia_libertaria` y uno íntegro de `/data/incidentes-fotos` (28 WebP).
+Ambos están en el mismo VPS: sirven para recuperación operativa, pero no son
+una copia externa. `SESSION_SECRET_KEY` está presente sólo en runtime de
+Coolify. El montaje `/data/incidentes-fotos` → `/data` es de tipo **bind**,
+no un volumen Docker con nombre. El aviso de configuración no aplicada
+desapareció tras el Redeploy; su campo histórico exacto no pudo identificarse.
 
-Pendientes reales antes de solicitar un despliegue: (1) verificar o crear un
-backup recuperable de `provincia_libertaria`; (2) verificar o crear un backup
-independiente de `/data/incidentes-fotos`; (3) identificar el cambio pendiente
-de Coolify; (4) agregar `SESSION_SECRET_KEY` mediante Environment Variables,
-sin guardarla en Git; (5) definir cómo publicar
-`integracion-local-sobre-github` sin merge, rebase ni pull automático con
-`main`. Ninguna de esas acciones fue ejecutada en este bloque documental.
+No quedan bloqueantes pendientes de este release. Mejoras opcionales: segunda
+copia de backups fuera del VPS y evaluación separada de Traefik 3.6.17 →
+3.6.25; v3.7 requiere revisión aparte. El próximo trabajo funcional debe
+definirse con Pablo. La evolución técnica aún válida figura en
+`ESTADO_ACTUAL.md`; no repetir la preparación de este despliegue.
 
 Antes de ordenar otra auditoría de infraestructura: leer
 `../nexo-central/INFRAESTRUCTURA_COOLIFY.md`,
@@ -43,6 +41,8 @@ manualmente; auditar sólo el dato que siga realmente desconocido.
 
 La documentación posterior conserva la cronología de validaciones anteriores;
 este punto de reanudación prevalece sobre sus indicaciones ya superadas.
+
+## Cronología anterior — superada por el cierre productivo anterior
 
 ## Bloque de login ya publicado en la rama remota — 2026-10-03
 
@@ -80,7 +80,7 @@ Actualizado: 2026-08-01.
 - Commit de partida de la validación local: `2a8b556`.
 - La rama local coincidía con `origin/integracion-local-sobre-github` y el árbol
   estaba limpio antes y después de las validaciones.
-- Rama productiva: `main`; `origin/main` permanece en `abc9807`.
+- Rama productiva en aquel corte: `main` en `abc9807`.
 - El contrato OpenAPI público y la etiqueta de la imagen productiva confirman
   `origin/main` (`abc9807bba2974ecd1bab36aa80166de3c66fbdf`).
 - Existe un acceso SSH restringido mediante el alias local
@@ -95,7 +95,7 @@ no poseen ancestro común. No ejecutar `pull`, merge ni rebase automático entre
 ellas. `main` conserva la referencia productiva e histórica;
 `integracion-local-sobre-github` es la fuente de verdad técnica para desarrollo.
 
-La sincronización futura debe ser manual, revisada y controlada.
+La reconciliación posterior quedó registrada en el punto de reanudación vigente.
 
 ## Estado de trabajo confirmado
 
@@ -121,7 +121,7 @@ La sincronización futura debe ser manual, revisada y controlada.
 - Producción permaneció intacta. No se comparó todavía la rama de integración
   con el código y la configuración efectivamente desplegados.
 
-## Próximo paso exacto
+## Próximo paso del corte histórico 2026-08-01 — ya superado donde corresponda
 
 El endpoint temporal `/debug` fue retirado de la rama local de desarrollo y se
 agregó una prueba que exige una respuesta `404`. La suite sin PostgreSQL quedó
