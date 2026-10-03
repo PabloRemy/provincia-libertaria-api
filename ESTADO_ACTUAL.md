@@ -1,5 +1,61 @@
 # Estado actual de Provincia Libertaria
 
+## Estado productivo y preparación — corte 2026-10-03
+
+Desarrollo: `integracion-local-sobre-github` quedó sincronizada con `origin` en
+`34f19f4` y con árbol limpio tras el push. El Dockerfile canónico construyó y
+arrancó localmente; `/`, `/login` y `/tablero` respondieron 200. Login, scopes,
+logout, escritura en `DATA_DIR` y `admin_sessions.sqlite3` fueron validados con
+datos ficticios, además de la aprobación visual de Pablo. Suite completa:
+`74 passed, 1 warning` conocido de Starlette. Estos cambios no se desplegaron.
+
+Producción: el contenedor `n85p5qn4eo94demg4mnbfu3m-132351845310` continúa
+en `abc9807bba2974ecd1bab36aa80166de3c66fbdf` bajo
+`https://mapa.provincialibertaria.com`. En la auditoría de lectura respondieron
+correctamente `/`, `/tablero` y `/reportes/berisso`. `/login` todavía no existe
+y `/territorio/berisso` conserva HTTP Basic. `/debug` sigue expuesto en el
+OpenAPI histórico; la rama nueva lo eliminó y comprueba su 404, sin requerir un
+cambio productivo separado.
+
+Pablo confirmó visualmente en Coolify la Application
+`provincia-libertaria-api:main-a10pfhw4ldlkafu6m7bh4p78` dentro de
+`ProvinciaLibertaria / production`: fuente Public GitHub
+`PabloRemy/provincia-libertaria-api`, rama `main`, Commit SHA `HEAD`, Build Pack
+`Dockerfile`, Base Directory `/`, Dockerfile Location `/Dockerfile` y dominio
+indicado arriba. El Dockerfile de `34f19f4` coincide con esa ubicación. Main e
+integración conservan historiales independientes.
+
+Coolify advierte `1 unapplied configuration change detected. A rebuild is
+required.` La vista de cambios mostró sólo "Previously deployed configuration
+-> Current configuration", sin campo identificable; no se aplicó. En
+Configuration > Rollback figuran `Images to keep for rollback: 2` y la imagen
+`abc9807bba2974ecd1bab36aa80166de3c66fbdf`, fechada
+`2026-06-19 13:24:33 +0000 UTC`, con acción Rollback disponible. No se ejecutó
+y no se presume retención adicional.
+
+Persistent Storage muestra el volumen
+`n85p5qn4eo94demg4mnbfu3m-incidentes-fotos`, Source Path
+`/data/incidentes-fotos` y Destination Path `/data`. El nuevo código usa
+`DATA_DIR=/data` por defecto: uploads y, después de un despliegue, el SQLite de
+sesiones quedarían en ese bind mount. El PostgreSQL principal compartido está
+documentado desde el snapshot 2026-09-28 en
+`../nexo-central/INFRAESTRUCTURA_COOLIFY.md`; Provincia usa la base
+`provincia_libertaria`. La agrupación visual del recurso PostgreSQL en
+`Pardementes / production` no lo vuelve exclusivo de Par de Mentes.
+
+Variables productivas, sólo presencia: `DATABASE_URL` y `ADMIN_USERS`
+presentes; `DATA_DIR` ausente (default `/data`); `SESSION_SECRET_KEY` ausente;
+`SESSION_COOKIE_SECURE` ausente (default seguro para HTTPS). No se registraron
+valores. Falta agregar `SESSION_SECRET_KEY` en Environment Variables antes de
+un despliegue autorizado.
+
+Persistencia PostgreSQL y `/data`: confirmada. Backup recuperable de
+`provincia_libertaria` y backup independiente de `/data/incidentes-fotos`:
+pendientes de verificar o crear. También faltan identificar el cambio de
+configuración no aplicado y definir publicación controlada de la rama técnica
+sin mezclar historiales. Éstos son los bloqueantes reales; producción no fue
+modificada. La cronología de abajo describe cortes anteriores.
+
 ## Construcción Docker local — 2026-10-03
 
 La auditoría productiva del 2026-10-03 confirmó que producción sigue en

@@ -1,21 +1,48 @@
 # Continuar desde aquí
 
-## Punto de reanudación — construcción Docker, 2026-10-03
+## Punto de reanudación confirmado — 2026-10-03
 
-Producción auditada continúa en `abc9807` y no fue modificada. El bloque local
-`1dd7052` requiere `provincia_api/`, ausente en la receta histórica que copiaba
-sólo `main.py`. `Dockerfile` es ahora la receta canónica propuesta para la
-aplicación actual; `Dockerfile.test` también incluye el paquete. Ambas imágenes
-se construyeron localmente. En un contenedor aislado se verificaron arranque,
-`/`, `/login`, `/tablero`, login por scopes `todos` y `berisso`, logout,
-escritura en `DATA_DIR` y SQLite de sesiones. La suite dio 74 aprobadas y una
-advertencia conocida de Starlette.
+La rama técnica `integracion-local-sobre-github` está publicada y sincronizada
+con `origin` en `34f19f4` (`fix: preparar imagen Docker para arquitectura
+modular`); el árbol estaba limpio tras el push. El Dockerfile canónico y el
+login con sesiones se validaron sólo en local: 74 pruebas aprobadas, una
+advertencia conocida de Starlette, login por scopes `todos` y `berisso`, logout,
+`DATA_DIR` escribible y SQLite de sesiones. Pablo aprobó visualmente el login,
+la barra de sesión y el logout. Producción no recibió estos cambios.
 
-Los cambios de Docker y esta documentación siguen sin commit. El siguiente
-paso es revisar el diff y, mediante autorización separada, publicar el cambio;
-configurar y ejecutar el despliegue controlado permanece pendiente. Antes de
-ese despliegue habrá que verificar que Coolify use `Dockerfile`, conserve el
-mount persistente de `/data`, y provea `SESSION_SECRET_KEY` sin exponerlo.
+Producción continúa en `abc9807bba2974ecd1bab36aa80166de3c66fbdf`, con
+HTTP Basic en `/territorio/berisso`; `/login` aún no existe allí. Pablo confirmó
+visualmente en Coolify `ProvinciaLibertaria / production` la Application
+`provincia-libertaria-api:main-a10pfhw4ldlkafu6m7bh4p78`, fuente Public
+GitHub `PabloRemy/provincia-libertaria-api`, rama `main`, Commit SHA `HEAD`,
+Build Pack `Dockerfile`, Base Directory `/` y Dockerfile Location `/Dockerfile`.
+El nuevo Dockerfile es compatible con esa ruta, pero publicar la rama técnica
+requiere un mecanismo controlado sin mezclar historiales con `main`.
+
+Coolify muestra `1 unapplied configuration change detected. A rebuild is
+required.`; "View changes" sólo mostró una diferencia genérica y no identificó
+el campo. **No aplicar antes de identificarlo.** En Rollback hay dos imágenes
+configuradas para retención y la imagen `abc9807` está disponible con acción
+Rollback. El almacenamiento persistente confirmado es
+`/data/incidentes-fotos` (host) → `/data` (contenedor), compatible con el
+`DATA_DIR=/data` predeterminado. Persistencia no equivale a backup.
+
+Pendientes reales antes de solicitar un despliegue: (1) verificar o crear un
+backup recuperable de `provincia_libertaria`; (2) verificar o crear un backup
+independiente de `/data/incidentes-fotos`; (3) identificar el cambio pendiente
+de Coolify; (4) agregar `SESSION_SECRET_KEY` mediante Environment Variables,
+sin guardarla en Git; (5) definir cómo publicar
+`integracion-local-sobre-github` sin merge, rebase ni pull automático con
+`main`. Ninguna de esas acciones fue ejecutada en este bloque documental.
+
+Antes de ordenar otra auditoría de infraestructura: leer
+`../nexo-central/INFRAESTRUCTURA_COOLIFY.md`,
+`../nexo-central/proyectos/provincia-libertaria.md`, este documento y
+`ESTADO_ACTUAL.md`; consultar a Pablo si el punto pudo haber sido configurado
+manualmente; auditar sólo el dato que siga realmente desconocido.
+
+La documentación posterior conserva la cronología de validaciones anteriores;
+este punto de reanudación prevalece sobre sus indicaciones ya superadas.
 
 ## Bloque de login ya publicado en la rama remota — 2026-10-03
 
