@@ -1,5 +1,30 @@
 # Entorno local de pruebas
 
+## Comprobación de la imagen actual
+
+`Dockerfile` es la receta canónica para construir la API actual con Python
+3.12, Uvicorn en el puerto interno 8000, `main.py` y `provincia_api/`.
+`Dockerfile.test` es la receta del servicio `api-test` en Compose. El archivo
+`Dockerfile.txt` conserva la receta histórica y no debe usarse para construir
+el código modularizado.
+
+Comprobación local simple que detecta la ausencia del paquete en la imagen:
+
+```bash
+docker build -f Dockerfile -t provincia-libertaria-api:local-check .
+docker run --rm --entrypoint python provincia-libertaria-api:local-check \
+  -c 'import main, provincia_api.auth, provincia_api.config, provincia_api.database, provincia_api.models, provincia_api.normalization, provincia_api.storage'
+```
+
+El 2026-10-03 se construyeron localmente las imágenes de `Dockerfile` y
+`Dockerfile.test`. La imagen canónica arrancó con credenciales ficticias y
+PostgreSQL local: `/`, `/login` y `/tablero` respondieron 200; los scopes
+`todos` y `berisso` llegaron a sus paneles, y POST `/logout` impidió el
+reingreso sin autenticación. `DATA_DIR` aceptó escritura y contuvo
+`admin_sessions.sqlite3` con la tabla de sesiones. La suite completa pasó:
+`74 passed, 1 warning` (advertencia conocida de Starlette). Producción siguió
+en `abc9807` y no se modificó.
+
 Línea base validada el 13/14 de julio de 2026 en Linux Mint 22.3 Zena, base
 Ubuntu Noble y arquitectura `amd64`, con Python 3.12.3, Docker Engine y Docker
 Compose. Docker fue comprobado previamente con `hello-world`.

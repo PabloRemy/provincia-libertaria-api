@@ -1,11 +1,29 @@
 # Continuar desde aquí
 
-## Bloque local sin publicar — 2026-10-03
+## Punto de reanudación — construcción Docker, 2026-10-03
+
+Producción auditada continúa en `abc9807` y no fue modificada. El bloque local
+`1dd7052` requiere `provincia_api/`, ausente en la receta histórica que copiaba
+sólo `main.py`. `Dockerfile` es ahora la receta canónica propuesta para la
+aplicación actual; `Dockerfile.test` también incluye el paquete. Ambas imágenes
+se construyeron localmente. En un contenedor aislado se verificaron arranque,
+`/`, `/login`, `/tablero`, login por scopes `todos` y `berisso`, logout,
+escritura en `DATA_DIR` y SQLite de sesiones. La suite dio 74 aprobadas y una
+advertencia conocida de Starlette.
+
+Los cambios de Docker y esta documentación siguen sin commit. El siguiente
+paso es revisar el diff y, mediante autorización separada, publicar el cambio;
+configurar y ejecutar el despliegue controlado permanece pendiente. Antes de
+ese despliegue habrá que verificar que Coolify use `Dockerfile`, conserve el
+mount persistente de `/data`, y provea `SESSION_SECRET_KEY` sin exponerlo.
+
+## Bloque de login ya publicado en la rama remota — 2026-10-03
 
 La rama `integracion-local-sobre-github` incorpora un
 login web con sesiones, logout y las mismas reglas de `ADMIN_USERS` y scopes.
-El bloque inicial de login pasó 71 pruebas y una advertencia. No hubo push ni
-despliegue. El entorno de pruebas necesita `SESSION_SECRET_KEY`
+El bloque inicial de login pasó 71 pruebas y una advertencia. El commit
+`1dd7052` fue publicado en la rama de integración, sin despliegue. El entorno
+de pruebas necesita `SESSION_SECRET_KEY`
 aleatorio y `DATA_DIR` escribible; ver `README_TESTS.md`. La información
 fechada 2026-08-01 más abajo describe la línea base previa.
 

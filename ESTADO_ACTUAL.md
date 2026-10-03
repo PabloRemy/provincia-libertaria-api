@@ -1,5 +1,22 @@
 # Estado actual de Provincia Libertaria
 
+## Construcción Docker local — 2026-10-03
+
+La auditoría productiva del 2026-10-03 confirmó que producción sigue en
+`abc9807`. El `Dockerfile.txt` histórico copiaba sólo `main.py`; el código de
+`1dd7052` importa además `provincia_api/`, por lo que esa receta no permite
+iniciar la aplicación actual. Se agregó `Dockerfile` como receta canónica
+propuesta para el próximo despliegue y se corrigió `Dockerfile.test`; ambas
+copian `main.py` y `provincia_api/` tras instalar `requirements.txt`.
+
+Las dos imágenes construyeron localmente. La imagen canónica arrancó en un
+contenedor aislado con PostgreSQL y usuarios ficticios: `/`, `/login` y
+`/tablero` respondieron 200; `admin-test` y `berisso-test` accedieron a sus
+paneles y, tras POST `/logout`, volvieron al login. Se verificaron imports,
+escritura en `DATA_DIR` y creación de `admin_sessions.sqlite3`. La suite
+completa pasó con 74 pruebas y una advertencia conocida de Starlette.
+Producción no fue modificada; el despliegue sigue pendiente.
+
 ## Actualización local — 2026-10-03
 
 En `integracion-local-sobre-github`, sin despliegue, se reemplazó
