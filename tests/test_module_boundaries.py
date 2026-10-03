@@ -17,7 +17,7 @@ def test_main_reexporta_simbolos_extraidos():
         parse_admin_users,
         puede_ver_distrito,
         requiere_distrito,
-        security,
+        authenticate_admin,
     )
     from provincia_api.config import (
         DATA_DIR,
@@ -48,7 +48,7 @@ def test_main_reexporta_simbolos_extraidos():
     assert main.get_current_admin is get_current_admin
     assert main.puede_ver_distrito is puede_ver_distrito
     assert main.requiere_distrito is requiere_distrito
-    assert main.security is security
+    assert main.authenticate_admin is authenticate_admin
     assert main.normalizar_texto is normalizar_texto
     assert main.normalizar_direccion is normalizar_direccion
     assert main.normalizar_numero is normalizar_numero

@@ -1,5 +1,28 @@
 # Estado actual de Provincia Libertaria
 
+## Actualización local — 2026-10-03
+
+En `integracion-local-sobre-github`, sin despliegue, se reemplazó
+HTTP Basic de administración por `/login`, cookie de sesión firmada y registro
+local de sesiones activas en `DATA_DIR/admin_sessions.sqlite3`. `/logout`
+elimina la sesión. `ADMIN_USERS` y los permisos territoriales siguen vigentes.
+Se requiere `SESSION_SECRET_KEY` de entorno (mínimo 32 caracteres); sin él, el
+acceso administrativo falla cerrado. El bloque inicial de login pasó 71 pruebas
+y una advertencia de Starlette. Los párrafos históricos de este
+documento reflejan la línea base anterior al bloque.
+
+Pablo validó manual y visualmente el bloque local: `/login` se muestra
+correctamente; `admin-test` inicia sesión con scope `todos`; `berisso-test`
+inicia sesión y llega al panel de Berisso. El flujo visual y funcional quedó
+aprobado localmente. Producción no fue modificada.
+
+La continuación local agregó un elemento de sesión reutilizado en Tercera
+Sección, paneles distritales y edición de reportes. Muestra usuario, alcance y
+`Salir`, que envía POST a `/logout`. La sesión queda invalidada y las rutas
+administrativas vuelven a exigir login. La suite completa quedó en 74 pruebas
+aprobadas y una advertencia de Starlette. Pablo aprobó visualmente también la
+barra, el logout y el reingreso con otro usuario en el entorno local.
+
 Fecha de referencia: 14 de julio de 2026. Validaciones realizadas el 13/14 de
 julio de 2026.
 

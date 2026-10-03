@@ -8,6 +8,23 @@ El entorno usa exclusivamente credenciales ficticias, la base local
 `provincia_libertaria_test` y puertos publicados en loopback. No existe conexión
 con producción.
 
+## Login administrativo local
+
+La administración usa `/login` con `ADMIN_USERS` y sesiones de ocho horas.
+`SESSION_SECRET_KEY` debe contener al menos 32 caracteres y mantenerse fuera
+de Git. Si falta, el login y las rutas administrativas devuelven 503; las rutas
+públicas siguen disponibles. En producción, la cookie es `Secure`, `HttpOnly`
+y `SameSite=Strict`. `SESSION_COOKIE_SECURE=false` se usa sólo en HTTP local.
+Las sesiones activas se registran en `DATA_DIR/admin_sessions.sqlite3`; ese
+directorio debe ser escribible. El logout borra la sesión del registro, y un
+reinicio sin conservar el archivo cierra todas las sesiones.
+
+Para probar en Docker local, agregar a `.env.test` un secreto local aleatorio
+generado con `python3 -c "import secrets; print(secrets.token_urlsafe(48))"`,
+en la forma `SESSION_SECRET_KEY=<valor generado>`, y cargarlo antes de
+`docker compose` con `set -a; source .env.test; set +a`. El formulario queda en
+`http://127.0.0.1:8000/login`. `/logout` borra la cookie y vuelve al login.
+
 ## Preparar Python y ejecutar pruebas sin PostgreSQL
 
 ```bash

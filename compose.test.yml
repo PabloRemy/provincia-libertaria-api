@@ -23,6 +23,8 @@ services:
     environment:
       DATABASE_URL: postgresql://provincia_test:provincia_test@postgres-test:5432/provincia_libertaria_test
       ADMIN_USERS: admin-test:clave-test:todos,armador-test:clave-test:tercera-seccion,berisso-test:clave-test:berisso,ensenada-test:clave-test:ensenada,laplata-test:clave-test:la-plata
+      SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:?Definir SESSION_SECRET_KEY para el entorno local}
+      SESSION_COOKIE_SECURE: "false"
       DATA_DIR: /data
     ports:
       - "127.0.0.1:8000:8000"

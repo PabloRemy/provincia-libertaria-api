@@ -1,6 +1,7 @@
 import os
 import json
 import html
+from urllib.parse import parse_qs, urlencode, urlsplit
 from typing import Optional, List, Any
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request, Depends, status
@@ -8,11 +9,18 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from provincia_api.auth import (
+    AdminLoginRequired,
+    SESSION_AGE,
+    SESSION_COOKIE,
+    authenticate_admin,
+    create_session,
+    destination_for_scope,
     get_current_admin,
     parse_admin_users,
     puede_ver_distrito,
+    revoke_session,
     requiere_distrito,
-    security,
+    secure_session_cookie,
 )
 from provincia_api.config import (
     DATA_DIR,
@@ -45,6 +53,11 @@ from provincia_api.storage import (
 
 app = FastAPI()
 
+
+@app.exception_handler(AdminLoginRequired)
+def admin_login_required(request: Request, exc: AdminLoginRequired):
+    return RedirectResponse(url="/login", status_code=303)
+
 app.mount(
     "/uploads",
     StaticFiles(directory=UPLOAD_ROOT, check_dir=False),
@@ -55,6 +68,156 @@ app.mount(
 @app.get("/")
 def home():
     return {"status": "ok", "app": "Provincia Libertaria API"}
+
+
+def login_page(error: bool = False) -> HTMLResponse:
+    message = '<p class="error" role="alert">Usuario o contraseña inválidos.</p>' if error else ""
+    return HTMLResponse(
+        content=f"""<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ingresar · Provincia Libertaria</title>
+  <style>
+    :root {{ color-scheme: dark; }}
+    * {{ box-sizing: border-box; }}
+    body {{ margin: 0; min-height: 100vh; display: grid; place-items: center;
+      padding: 24px; background: radial-gradient(circle at top, #3b101b, #130d11 65%);
+      color: #f6eee4; font-family: Arial, sans-serif; }}
+    main {{ width: min(100%, 420px); padding: clamp(26px, 6vw, 42px);
+      background: #211418; border: 1px solid #9b7a38; border-radius: 14px;
+      box-shadow: 0 20px 60px #0008; }}
+    .eyebrow {{ color: #d7b970; text-transform: uppercase; letter-spacing: .18em;
+      font-size: .75rem; font-weight: 700; }}
+    h1 {{ margin: 12px 0 8px; font-size: clamp(1.8rem, 6vw, 2.4rem); }}
+    p {{ color: #cfbfbb; line-height: 1.5; }}
+    label {{ display: block; margin: 18px 0 8px; font-weight: 600; }}
+    input {{ width: 100%; padding: 13px 14px; border: 1px solid #7c6264;
+      border-radius: 7px; background: #120d10; color: white; font: inherit; }}
+    input:focus {{ outline: 2px solid #d7b970; outline-offset: 2px; }}
+    button {{ width: 100%; margin-top: 28px; padding: 14px; border: 0;
+      border-radius: 7px; background: #c6a45b; color: #1a1010;
+      font: inherit; font-weight: 700; cursor: pointer; }}
+    button:hover {{ background: #e0bd72; }}
+    .error {{ color: #ffd7d7; background: #59222a; padding: 10px 12px; border-radius: 6px; }}
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">Provincia Libertaria</div>
+    <h1>Ingresar</h1>
+    <p>Acceso a la administración territorial</p>
+    {message}
+    <form method="post" action="/login">
+      <label for="username">Usuario</label>
+      <input id="username" name="username" autocomplete="username" required>
+      <label for="password">Contraseña</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <button type="submit">Entrar</button>
+    </form>
+  </main>
+</body>
+</html>""",
+        status_code=401 if error else 200,
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/login", response_class=HTMLResponse, include_in_schema=False)
+def login_form():
+    return login_page()
+
+
+@app.post("/login", include_in_schema=False)
+def login_submit(username: str = Form(...), password: str = Form(...)):
+    admin = authenticate_admin(username, password)
+    if admin is None:
+        return login_page(error=True)
+    destination = destination_for_scope(admin["scope"])
+    token = create_session(admin)
+    response = RedirectResponse(url=destination, status_code=303)
+    response.set_cookie(
+        SESSION_COOKIE, token, max_age=SESSION_AGE, httponly=True,
+        secure=secure_session_cookie(), samesite="strict", path="/",
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.get("/logout", include_in_schema=False)
+@app.post("/logout", include_in_schema=False)
+def logout(request: Request):
+    token = request.cookies.get(SESSION_COOKIE)
+    if token:
+        revoke_session(token)
+    response = RedirectResponse(url="/login", status_code=303)
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+ADMIN_SESSION_STYLE = """
+    .admin-session-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 10px 18px;
+        margin-bottom: 18px;
+        padding: 10px 14px;
+        border: 1px solid rgba(241, 213, 113, .5);
+        border-radius: 10px;
+        background: rgba(18, 18, 18, .45);
+        color: #f7e7b0;
+        font-size: 14px;
+    }
+    .admin-session-identity {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .admin-session-bar strong { color: #ffffff; }
+    .admin-session-bar form { margin: 0; }
+    .admin-session-bar button {
+        width: auto;
+        margin: 0;
+        padding: 7px 12px;
+        border: 1px solid #b98b31;
+        border-radius: 7px;
+        background: #121212;
+        color: #f1d571;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+    }
+    .admin-session-bar button:hover,
+    .admin-session-bar button:focus-visible {
+        background: #f1d571;
+        color: #121212;
+    }
+"""
+
+
+def admin_session_bar(admin: dict) -> str:
+    scope = admin["scope"]
+    if scope == "todos":
+        scope_label = "Todos los distritos"
+    elif scope == "tercera-seccion":
+        scope_label = "Tercera Sección"
+    else:
+        scope_label = dict(DISTRITOS_TERCERA).get(
+            scope, scope.replace("-", " ").title()
+        )
+    username = html.escape(admin["username"], quote=True)
+    scope_label = html.escape(scope_label, quote=True)
+    return f"""<div class="admin-session-bar" role="group" aria-label="Sesión administrativa">
+        <span class="admin-session-identity">
+            <strong>{username}</strong><span aria-hidden="true">·</span><span>{scope_label}</span>
+        </span>
+        <form method="post" action="/logout"><button type="submit">Salir</button></form>
+    </div>"""
 
 
 def limpiar_payload_webhook(payload: dict[str, Any]) -> dict[str, Any]:
@@ -217,12 +380,32 @@ def cambiar_estado_lote(
     volver: str = Form("/territorio/berisso"),
     admin = Depends(get_current_admin)
 ):
-    if "/territorio/" in volver:
-        distrito_slug = volver.split("/territorio/")[-1].split("?")[0].strip("/")
+    parsed = urlsplit(volver)
+    if parsed.scheme or parsed.netloc or parsed.fragment:
+        raise HTTPException(status_code=400, detail="Destino de retorno inválido")
+    if parsed.path == "/tercera-seccion" and not parsed.query:
+        if admin["scope"] not in ("todos", "tercera-seccion"):
+            raise HTTPException(status_code=403, detail="Sin permiso para la Tercera Sección")
+        destino = parsed.path
+    elif parsed.path.startswith("/territorio/"):
+        distrito_slug = parsed.path.removeprefix("/territorio/")
+        if not distrito_slug or "/" in distrito_slug:
+            raise HTTPException(status_code=400, detail="Destino de retorno inválido")
         requiere_distrito(distrito_slug, admin)
+        query = parse_qs(parsed.query, keep_blank_values=True)
+        if set(query) - {"estado"} or any(len(value) != 1 for value in query.values()):
+            raise HTTPException(status_code=400, detail="Destino de retorno inválido")
+        estado_retorno = query.get("estado", ["pendiente"])[0]
+        if estado_retorno not in (*ESTADOS_VALIDOS, "todos"):
+            raise HTTPException(status_code=400, detail="Destino de retorno inválido")
+        destino = parsed.path
+        if parsed.query:
+            destino += "?" + urlencode({"estado": estado_retorno})
+    else:
+        raise HTTPException(status_code=400, detail="Destino de retorno inválido")
 
     actualizar_estado_incidentes(ids, estado)
-    return RedirectResponse(url=volver, status_code=303)
+    return RedirectResponse(url=destino, status_code=303)
 
 
 @app.get("/incidentes/editar/{incidente_id}", response_class=HTMLResponse)
@@ -399,10 +582,12 @@ def editar_incidente_form(incidente_id: int, admin = Depends(get_current_admin))
                     grid-template-columns: 1fr;
                 }}
             }}
+            {ADMIN_SESSION_STYLE}
         </style>
     </head>
     <body>
         <main class="wrap">
+            {admin_session_bar(admin)}
             <div class="box">
                 <h1>Editar reporte #{id_incidente}</h1>
 
@@ -1105,10 +1290,12 @@ def panel_tercera_seccion(admin = Depends(get_current_admin)):
                     font-size: 32px;
                 }}
             }}
+            {ADMIN_SESSION_STYLE}
         </style>
     </head>
     <body>
         <main class="wrap">
+            {admin_session_bar(admin)}
             <section>
                 <div class="eyebrow">Panel general</div>
                 <h1>Tercera Sección</h1>
@@ -1617,10 +1804,12 @@ def panel_distrito(distrito_slug: str, estado: str = "pendiente", admin = Depend
                     font-size: 32px;
                 }}
             }}
+            {ADMIN_SESSION_STYLE}
         </style>
     </head>
     <body>
         <main class="wrap">
+            {admin_session_bar(admin)}
             <section>
                 <div class="eyebrow">Panel territorial</div>
                 <h1>Distrito {html.escape(ciudad)}</h1>

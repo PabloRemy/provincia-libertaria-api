@@ -1,5 +1,30 @@
 # Continuar desde aquí
 
+## Bloque local sin publicar — 2026-10-03
+
+La rama `integracion-local-sobre-github` incorpora un
+login web con sesiones, logout y las mismas reglas de `ADMIN_USERS` y scopes.
+El bloque inicial de login pasó 71 pruebas y una advertencia. No hubo push ni
+despliegue. El entorno de pruebas necesita `SESSION_SECRET_KEY`
+aleatorio y `DATA_DIR` escribible; ver `README_TESTS.md`. La información
+fechada 2026-08-01 más abajo describe la línea base previa.
+
+Pablo aprobó la validación manual y visual local: formulario `/login`,
+autenticación de `admin-test` con scope `todos` y redirección de
+`berisso-test` al panel de Berisso. Producción permaneció intacta. Al cierre,
+el servidor de prueba seguía escuchando en `127.0.0.1:8001`; comprobar su
+estado al retomar, sin asumir que seguirá activo.
+
+Continuación de UX local: las vistas de Tercera Sección, distrito y edición
+muestran usuario, scope legible y el botón `Salir` por POST a `/logout`. La
+suite completa pasó con 74 pruebas y una advertencia; el logout y los permisos
+territoriales siguen verificados. Pablo aprobó visualmente la nueva barra, el
+logout y el reingreso con otro usuario. No se modificó producción.
+
+Para continuar: verificar el estado Git y el commit local de este bloque. No
+publicar ni preparar despliegue sin una etapa separada de revisión y
+autorización.
+
 Actualizado: 2026-08-01.
 
 ## Punto de partida verificado
