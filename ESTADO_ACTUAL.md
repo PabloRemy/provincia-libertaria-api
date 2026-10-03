@@ -11,8 +11,11 @@ y completó el rolling update. Contenedor
 no disparó auto-deploy, por lo que Pablo autorizó y ejecutó Redeploy manual.
 
 El release conserva `abc9807bba2974ecd1bab36aa80166de3c66fbdf` como
-padre productivo inmediato. El árbol de `e9a9b06` y el de la rama técnica
-`integracion-local-sobre-github` en `c7c19af` son idénticos:
+padre productivo inmediato. El HEAD actual de la rama técnica
+`integracion-local-sobre-github` es
+`6d07264405df4bd16f8dfb3f3466618bff5f7539`; el corte de código validado
+para el release fue `c7c19af`. El árbol de `e9a9b06` y el de ese corte son
+idénticos:
 `b65a8c3ff144d46de1f0dcb0e755f6c2e76770cf`; `git diff --exit-code
 c7c19af main` terminó en 0. No se mezclaron los historiales independientes.
 La rama técnica continúa siendo la línea de desarrollo; `main`, la productiva.
@@ -28,6 +31,13 @@ variables `DATABASE_URL`, `ADMIN_USERS` y `SESSION_SECRET_KEY` presentes,
 sesión se configuró en Coolify sólo para runtime, no para buildtime; no se
 registra ningún valor. El fallo inicial de acceso por un error de tipeo del
 usuario no fue una incidencia del sistema.
+
+Pablo confirmó posteriormente que configuró manualmente el candado de
+«Distritos» del sitio público hacia
+`https://mapa.provincialibertaria.com/login`. El flujo público → Distritos →
+candado → `/login` → autenticación → panel territorial protegido → logout →
+`/login` queda enlazado. Login, sesión, panel y logout ya contaban con QA
+productivo visual y técnico; no se realizó una nueva auditoría de WordPress.
 
 El montaje real es **bind** de `/data/incidentes-fotos` en el host a `/data`
 en el contenedor, no un volumen Docker con nombre. Fotos WebP: 28 en host y

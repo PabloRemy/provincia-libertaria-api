@@ -11,13 +11,22 @@ de sesión, `Salir` y la exigencia de login tras logout. QA de lectura confirmó
 `/login` 200, `/debug` 404, `/` 200, PostgreSQL ready, fotos 28/28 y
 `/data/admin_sessions.sqlite3` existente.
 
-La rama técnica `integracion-local-sobre-github` permanece en `c7c19af` como
-línea de desarrollo. El código validado pasó `74 passed, 1 warning` de
+La rama técnica `integracion-local-sobre-github` sigue siendo la línea de
+desarrollo; su HEAD documental actual es
+`6d07264405df4bd16f8dfb3f3466618bff5f7539`. El corte de código validado
+para el release fue `c7c19af` y pasó `74 passed, 1 warning` de
 Starlette, Dockerfile, login, scopes, logout y escritura en `DATA_DIR`. El
 commit de reconciliación `e9a9b06` tiene padre inmediato `abc9807` y árbol
 `b65a8c3ff144d46de1f0dcb0e755f6c2e76770cf`, idéntico al de `c7c19af`;
 se publicó mediante fast-forward, sin mezclar las historias independientes.
 El worktree temporal de `main` sigue en `/tmp/provincia-libertaria-main-20261003`.
+
+Pablo confirmó que enlazó manualmente el candado de «Distritos» del sitio
+público a `https://mapa.provincialibertaria.com/login`. El recorrido visible
+queda: sitio público → Distritos → candado → `/login` → autenticación → panel
+territorial protegido → logout → `/login`. Login, sesión, panel y logout ya
+habían sido verificados visual y técnicamente en el QA productivo; esta
+confirmación del enlace no implica una nueva auditoría de WordPress.
 
 Antes del release se verificó un backup local exitoso de la base
 `provincia_libertaria` y uno íntegro de `/data/incidentes-fotos` (28 WebP).
